@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0
-// Feel free to change the license, but this is what we use
 
-// Feel free to change this version of Solidity. We support >=0.6.0 <0.7.0;
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
@@ -10,6 +8,7 @@ import {
     BaseStrategy,
     StrategyParams
 } from "@yearnvaults/contracts/BaseStrategy.sol";
+import "@openzeppelin/contracts/math/Math.sol";
 import {
     SafeERC20,
     SafeMath,
@@ -17,52 +16,16 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
+import "../interfaces/Stargate/IStargateRouter.sol";
+import "../interfaces/Stargate/IPool.sol";
+import "../interfaces/Stargate/ILPStaking.sol";
 
-interface IStargateFarm{
-    function pendingStargate(uint256, address) external view returns(uint256);
-    function userInfo(uint256, address) external view returns(uint256,uint256);
-    function deposit(uint256,uint256) external;
-    function withdraw(uint256,uint256) external;
-    function emergencyWithdraw(uint256) external;
-}
-
-interface IStargateRouter{
-    function addLiquidity(uint256,uint256,address) external;
-    function instantRedeemLocal(uint16 _srcPoolId, uint256 _amountLP, address _to) external;
-}
-
-interface ISTGToken is IERC20 {
-    function amountLPtoLD(uint256 _amount) external view returns (uint256);
-}
-
-
-interface IUniV3 {
-    struct ExactInputParams {
-        bytes path;
-        address recipient;
-        uint256 deadline;
-        uint256 amountIn;
-        uint256 amountOutMinimum;
-    }
-
-    function exactInput(ExactInputParams calldata params)
-        external
-        payable
-        returns (uint256 amountOut);
-}
+import "../interfaces/Uniswap/IUniV3.sol"; // TODO: replace with ySwaps
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
-
-    //max for 256-1 on approve
-    uint256 public constant max = type(uint256).max;
-
-    //$USDC Token
-    IERC20 public constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
     IERC20 internal constant weth =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -70,65 +33,48 @@ contract Strategy is BaseStrategy {
     address internal constant uniswapv3 =
         0xE592427A0AEce92De3Edee1F18E0157C05861564;
 
-    //$STG Token
-    ISTGToken public constant STG = ISTGToken(0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6);
+    uint256 public immutable liquidityPoolID;
+    uint256 public immutable liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
-    //Staking Contract
-    IStargateFarm public constant StakingContract = IStargateFarm(0xB0D502E938ed5f4df2E681fE6E419ff29631d62b);
+    IERC20 public immutable STG;
+    IPool public immutable liquidityPool;
+    IERC20 public immutable lpToken;
+    IStargateRouter public immutable stargateRouter;
+    ILPStaking public immutable lpStaker;
 
-    //Router
-    IStargateRouter public StarGateRouter = IStargateRouter(0x8731d54E9D02c286767d56ac03e8037C07e01e98);
+    string internal strategyName;
 
-    //Pool Token
-    ISTGToken public constant pUSDC = ISTGToken(0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56);
+    constructor(address _vault, address _lpStaker, uint16 _liquidityPoolIDInLPStaking, string memory _strategyName) public BaseStrategy(_vault) {
+        ILPStaking __lpStaker = ILPStaking(_lpStaker);
+        lpStaker = __lpStaker;
+        STG = IERC20(__lpStaker.stargate());
+        liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
 
-    //PoolID for Router:
-    uint16 public constant PoolID = 1;
+        IERC20 _lpToken = __lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
+        lpToken = _lpToken;
 
-    //PID for Farming
-    uint16 public constant PID = 0;
+        IPool _liquidityPool = IPool(address(_lpToken));
+        liquidityPool = _liquidityPool;
+        liquidityPoolID = _liquidityPool.poolId();
+        stargateRouter = IStargateRouter(_liquidityPool.router());
 
-    constructor(address _vault) public BaseStrategy(_vault) {
-        // You can set these parameters on deployment to whatever you want
-        // maxReportDelay = 6300;
-        // profitFactor = 100;
-        // debtThreshold = 0;
-        USDC.approve(0x8731d54E9D02c286767d56ac03e8037C07e01e98,max);
-        STG.approve(uniswapv3, max);
-        weth.approve(uniswapv3, max);
-        pUSDC.approve(0xB0D502E938ed5f4df2E681fE6E419ff29631d62b,max);
+        assert(address(want) == _liquidityPool.token());
 
+        strategyName = _strategyName;
     }
 
-    // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
+    // TODO: cloning
 
     function name() external view override returns (string memory) {
-        // Add your own name here, suggestion e.g. "StrategyCreamYFI"
-        return "StrategyStargateUSDConEthereum";
+        return strategyName; // E.g., 'StrategyStargateUSDC'
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
-        (uint256 bal,) = StakingContract.userInfo(PID,address(this));
-        uint256 converted = pUSDC.amountLPtoLD(bal);
-        return want.balanceOf(address(this)).add(converted);
+        return balanceOfWant().add(valueOfLPTokens());
     }
 
-    function balanceOfWant() public view returns (uint256){
-        return want.balanceOf(address(this));
-    }
-
-    function balanceOfReward() public view returns (uint256){
-        return STG.balanceOf(address(this));
-    }
-
-    function pendingRewards() public view returns(uint256){
-        uint256 pending = StakingContract.pendingStargate(PID,address(this));
-        return pending;
-    }
-
-    function _addToLP(uint256 _amount) internal {
-        StarGateRouter.addLiquidity(PoolID, _amount, address(this));
+    function pendingSTGRewards() public view returns (uint256){ // Is this needed? 
+        return lpStaker.pendingStargate(liquidityPoolIDInLPStaking, address(this));
     }
 
     function prepareReturn(uint256 _debtOutstanding)
@@ -140,28 +86,42 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        //grab the estimate total debt from the vault
-        uint256 vaultDebt = vault.strategies(address(this)).totalDebt;
-
         //Perform a 0 deposit to claim any outstanding rewards
-        StakingContract.deposit(0,0);
+        lpStaker.deposit(0,0);
 
         //check STG
-        uint256 looseReward = STG.balanceOf(address(this));
-        if(looseReward != 0){
-            uint256 wethOutput = _sellSTGForWETH(looseReward);
-            _sellWETHforUSDC(wethOutput);
+        uint256 _looseSTG = balanceOfSTG();
+        if(_looseSTG != 0){
+            uint256 _wethOutput = _sellSTGForWETH(_looseSTG);
+            _sellWETHforWant(_wethOutput);
         }
 
-        uint256 finalProfit = estimatedTotalAssets().sub(vaultDebt);
+        //grab the estimate total debt from the vault
+        uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
+        uint256 _totalAssets = estimatedTotalAssets();
 
-        if(finalProfit < _debtOutstanding){
-            _profit = 0;
-            _debtPayment = balanceOfWant();
-            _loss = _debtOutstanding.sub(_debtPayment);
+        if (_totalAssets >= _vaultDebt) {
+            // Implicitly, _profit & _loss are 0 before we change them.
+            _profit = _totalAssets.sub(_vaultDebt);
         } else {
-            _profit = finalProfit.sub(_debtOutstanding);
-            _debtPayment = _debtOutstanding;
+            _loss = _vaultDebt.sub(_totalAssets);
+        }
+
+        //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
+
+        (uint256 _amountFreed, uint256 _liquidationLoss) =
+            liquidatePosition(_debtOutstanding.add(_profit));
+
+        _loss = _loss.add(_liquidationLoss);
+
+        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+
+        if (_loss > _profit) {
+            _loss = _loss.sub(_profit);
+            _profit = 0;
+        } else {
+            _profit = _profit.sub(_loss);
+            _loss = 0;
         }
 
 
@@ -172,6 +132,8 @@ contract Strategy is BaseStrategy {
 
         // Sells our STG for WETH
     function _sellSTGForWETH(uint256 _amount) internal returns (uint256) {
+        _checkAllowance(uniswapv3, address(STG), _amount);
+
         uint256 _wethOutput =
             IUniV3(uniswapv3).exactInput(
                 IUniV3.ExactInputParams(
@@ -189,15 +151,17 @@ contract Strategy is BaseStrategy {
         return _wethOutput;
     }
 
-            // Sells our WETH for USDC
-    function _sellWETHforUSDC(uint256 _amount) internal returns (uint256) {
+    // Sells our WETH for want
+    function _sellWETHforWant(uint256 _amount) internal returns (uint256) {
+        _checkAllowance(uniswapv3, address(weth), _amount);
+
         uint256 _usdcOutput =
             IUniV3(uniswapv3).exactInput(
                 IUniV3.ExactInputParams(
                     abi.encodePacked(
                         address(weth),
                         uint24(500),
-                        address(USDC)
+                        address(want)
                     ),
                     address(this),
                     block.timestamp,
@@ -209,12 +173,12 @@ contract Strategy is BaseStrategy {
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        // TODO: Do something to invest excess `want` tokens (from the Vault) into your positions
-        // NOTE: Try to adjust positions so that `_debtOutstanding` can be freed up on *next* harvest (not immediately)
+        uint256 _looseWant = balanceOfWant();
 
-        uint256 looseWant = balanceOfWant();
-        if(looseWant > 10000e18){
-            _addToLP(looseWant);
+        if (_looseWant > _debtOutstanding) {
+            uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
+
+            _addToLP(_amountToDeposit);
         }
     }
 
@@ -223,51 +187,49 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
-        // TODO: Do stuff here to free up to `_amountNeeded` from all positions back into `want`
         // NOTE: Maintain invariant `want.balanceOf(this) >= _liquidatedAmount`
         // NOTE: Maintain invariant `_liquidatedAmount + _loss <= _amountNeeded`
-        (uint256 bal,) = StakingContract.userInfo(PID,address(this));
-        uint256 converted = pUSDC.amountLPtoLD(bal);
-        uint256 totalAssets = want.balanceOf(address(this));
+        uint256 _liquidAssets = balanceOfWant();
+        
+        _amountNeeded = Math.min(_amountNeeded, estimatedTotalAssets()); // Otherwise we can end up declaring a liquidation loss when _amountNeeded is more than we own
 
-        if(totalAssets < _amountNeeded && converted.add(totalAssets) > _amountNeeded){
-            //withdraw from farm
-            StakingContract.withdraw(PID,bal);
+        if(_liquidAssets < _amountNeeded) {
+            // TODO: maybe instead of withdrawing whole balance from lpStaker & re-depositing, withdraw only the amount we need
+            lpStaker.withdraw(liquidityPoolIDInLPStaking, balanceOfStakedLPToken());
 
             //withdraw from pool
-            StarGateRouter.instantRedeemLocal(PoolID, bal, address(this));
+            _withdrawFromLP(balanceOfUnstakedLPToken());
 
-            //Check current usdc balance
-
-            uint256 postWithdrawUSDC = USDC.balanceOf(address(this));
+            //check current want balance
+            uint256 _postWithdrawWant = balanceOfWant();
 
             //redeposit to pool
-            if(postWithdrawUSDC > _amountNeeded){
-                StarGateRouter.addLiquidity(PoolID, postWithdrawUSDC.sub(_amountNeeded), address(this));
+            if(_postWithdrawWant > _amountNeeded){
+                stargateRouter.addLiquidity(liquidityPoolID, _postWithdrawWant.sub(_amountNeeded), address(this));
             
                 //redeposit to farm
-                StakingContract.deposit(PID,pUSDC.balanceOf(address(this)));
+                lpStaker.deposit(liquidityPoolIDInLPStaking, balanceOfStakedLPToken());
             }
+
+            _liquidAssets = balanceOfWant();
         }
 
-        //recheck total assets
-        totalAssets = want.balanceOf(address(this));
-
-        if (_amountNeeded > totalAssets) {
-            _liquidatedAmount = totalAssets;
-            _loss = _amountNeeded.sub(totalAssets);
+        if (_amountNeeded > _liquidAssets) {
+            _liquidatedAmount = _liquidAssets;
+            _loss = _amountNeeded.sub(_liquidAssets);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
     }
 
     function liquidateAllPositions() internal override returns (uint256) {
-        // TODO: Liquidate all positions and return the amount freed.
-        StakingContract.emergencyWithdraw(PID);
-        if(pUSDC.balanceOf(address(this)) > 0){
-            StarGateRouter.instantRedeemLocal(PoolID, pUSDC.balanceOf(address(this)), address(this));
+        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+
+        uint256 _lpTokenBalance = balanceOfUnstakedLPToken();
+        if(_lpTokenBalance > 0){
+            _withdrawFromLP(_lpTokenBalance);
         }
-        return want.balanceOf(address(this));
+        return balanceOfWant();
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
@@ -320,5 +282,55 @@ contract Strategy is BaseStrategy {
     {
         // TODO create an accurate price oracle
         return _amtInWei;
+    }
+
+    // --------- UTILITY & HELPER FUNCTIONS ------------
+
+    function _addToLP(uint256 _amount) internal { // Nice! DRY principle
+        _checkAllowance(address(stargateRouter), address(want), _amount);
+        stargateRouter.addLiquidity(liquidityPoolID, _amount, address(this));
+    }
+
+    function _withdrawFromLP(uint256 _lpAmount) internal {
+        stargateRouter.instantRedeemLocal(uint16(liquidityPoolID), _lpAmount, address(this));
+    }
+
+    function balanceOfWant() public view returns (uint256) {
+        return want.balanceOf(address(this));
+    }
+
+    function valueOfLPTokens() public view returns (uint256) {
+        uint256 _totalLPTokenBalance = balanceOfAllLPToken();
+
+        return liquidityPool.amountLPtoLD(_totalLPTokenBalance);
+    }
+
+    function balanceOfAllLPToken() public view returns (uint256) {
+        return balanceOfUnstakedLPToken().add(balanceOfStakedLPToken());
+    }
+
+    function balanceOfUnstakedLPToken() public view returns (uint256) {
+        return lpToken.balanceOf(address(this));
+    }
+
+    function balanceOfStakedLPToken() public view returns (uint256) {
+        return lpStaker.userInfo(liquidityPoolIDInLPStaking, address(this)).amount;
+    }
+
+    function balanceOfSTG() public view returns (uint256) {
+        return STG.balanceOf(address(this));
+    }
+
+    // _checkAllowance adapted from https://github.com/therealmonoloco/liquity-stability-pool-strategy/blob/1fb0b00d24e0f5621f1e57def98c26900d551089/contracts/Strategy.sol#L316
+
+    function _checkAllowance(
+        address _contract,
+        address _token,
+        uint256 _amount
+    ) internal {
+        if (IERC20(_token).allowance(address(this), _contract) < _amount) {
+            IERC20(_token).safeApprove(_contract, 0);
+            IERC20(_token).safeApprove(_contract, _amount);
+        }
     }
 }
