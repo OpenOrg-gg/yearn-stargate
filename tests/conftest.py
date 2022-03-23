@@ -45,6 +45,35 @@ def token():
 
 
 @pytest.fixture
+def stg_token():
+    token_address = "0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6"
+    yield Contract(token_address)
+
+
+@pytest.fixture
+def lp_staker():
+    address = "0xB0D502E938ed5f4df2E681fE6E419ff29631d62b"
+    yield Contract(address)
+
+
+@pytest.fixture
+def stargate_router():
+    address = "0x8731d54E9D02c286767d56ac03e8037C07e01e98"
+    yield Contract(address)
+
+
+@pytest.fixture
+def stargate_token_pool():
+    address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"  # for USDC
+    yield Contract(address)
+
+
+@pytest.fixture(scope="session")
+def liquidity_pool_id_in_lp_staking():
+    yield 0
+
+
+@pytest.fixture
 def amount(accounts, token, user):
     amount = 10_000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
@@ -78,8 +107,16 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov):
-    strategy = strategist.deploy(Strategy, vault)
+def strategy(
+    strategist, keeper, vault, Strategy, gov, lp_staker, liquidity_pool_id_in_lp_staking
+):
+    strategy = strategist.deploy(
+        Strategy,
+        vault,
+        lp_staker,
+        liquidity_pool_id_in_lp_staking,
+        "StrategyStargateUSDC",
+    )
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
