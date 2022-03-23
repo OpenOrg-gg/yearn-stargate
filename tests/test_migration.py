@@ -16,8 +16,8 @@ def test_migration(
     gov,
     user,
     RELATIVE_APPROX,
-    lp_staker, 
-    liquidity_pool_id_in_lp_staking
+    lp_staker,
+    liquidity_pool_id_in_lp_staking,
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -27,7 +27,13 @@ def test_migration(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # migrate to a new strategy
-    new_strategy = strategist.deploy(Strategy, vault, lp_staker, liquidity_pool_id_in_lp_staking, "StrategyStargateUSDC")
+    new_strategy = strategist.deploy(
+        Strategy,
+        vault,
+        lp_staker,
+        liquidity_pool_id_in_lp_staking,
+        "StrategyStargateUSDC",
+    )
     vault.migrateStrategy(strategy, new_strategy, {"from": gov})
     # TODO: comment this back in once prepareMigration() is finished
     # assert (
