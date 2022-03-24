@@ -18,6 +18,8 @@ def test_migration(
     RELATIVE_APPROX,
     lp_staker,
     liquidity_pool_id_in_lp_staking,
+    weth,
+    univ3_swapper
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -32,6 +34,8 @@ def test_migration(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
+        weth,
+        univ3_swapper,
         "StrategyStargateUSDC",
     )
     vault.migrateStrategy(strategy, new_strategy, {"from": gov})
