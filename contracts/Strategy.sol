@@ -29,20 +29,18 @@ contract Strategy is BaseStrategy {
 
     address public tradeFactory = address(0);
 
-    IERC20 internal constant weth =
-        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20 public weth;
 
-    address internal constant uniswapv3 =
-        0xE592427A0AEce92De3Edee1F18E0157C05861564;
+    address public uniV3Swapper;
 
-    uint256 public immutable liquidityPoolID;
-    uint256 public immutable liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
+    uint256 public liquidityPoolID;
+    uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
-    IERC20 public immutable STG;
-    IPool public immutable liquidityPool;
-    IERC20 public immutable lpToken;
-    IStargateRouter public immutable stargateRouter;
-    ILPStaking public immutable lpStaker;
+    IERC20 public STG;
+    IPool public liquidityPool;
+    IERC20 public lpToken;
+    IStargateRouter public stargateRouter;
+    ILPStaking public lpStaker;
 
     string internal strategyName;
 
@@ -50,25 +48,25 @@ contract Strategy is BaseStrategy {
         address _vault,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
+        address _weth,
+        address _uniV3Swapper,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        ILPStaking __lpStaker = ILPStaking(_lpStaker);
-        lpStaker = __lpStaker;
-        STG = IERC20(__lpStaker.stargate());
+        lpStaker = ILPStaking(_lpStaker);
+        STG = IERC20(lpStaker.stargate());
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
 
-        IERC20 _lpToken =
-            __lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
-        lpToken = _lpToken;
+        lpToken = lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
 
-        IPool _liquidityPool = IPool(address(_lpToken));
-        liquidityPool = _liquidityPool;
-        liquidityPoolID = _liquidityPool.poolId();
-        stargateRouter = IStargateRouter(_liquidityPool.router());
+        liquidityPool = IPool(address(lpToken));
+        liquidityPoolID = liquidityPool.poolId();
+        stargateRouter = IStargateRouter(liquidityPool.router());
 
         require(address(want) == _liquidityPool.token()); //dev: want should be the same as the liquidity pool token
 
         strategyName = _strategyName;
+        weth = IERC20(_weth);
+        uniV3Swapper = _uniV3Swapper;
     }
 
     // TODO: cloning
@@ -101,7 +99,7 @@ contract Strategy is BaseStrategy {
             lpStaker.deposit(liquidityPoolIDInLPStaking, 0);
         }
 
-        if(tradeFactory == address(0)){
+        if (tradeFactory == address(0)) {
             //check STG
             uint256 _looseSTG = balanceOfSTG();
             if (_looseSTG != 0) {
@@ -141,10 +139,10 @@ contract Strategy is BaseStrategy {
 
     // Sells our STG for WETH
     function _sellSTGForWETH(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniswapv3, address(STG), _amount);
+        _checkAllowance(uniV3Swapper, address(STG), _amount);
 
         uint256 _wethOutput =
-            IUniV3(uniswapv3).exactInput(
+            IUniV3(uniV3Swapper).exactInput(
                 IUniV3.ExactInputParams(
                     abi.encodePacked(address(STG), uint24(500), address(weth)),
                     address(this),
@@ -158,10 +156,10 @@ contract Strategy is BaseStrategy {
 
     // Sells our WETH for want
     function _sellWETHforWant(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniswapv3, address(weth), _amount);
+        _checkAllowance(uniV3Swapper, address(weth), _amount);
 
         uint256 _usdcOutput =
-            IUniV3(uniswapv3).exactInput(
+            IUniV3(uniV3Swapper).exactInput(
                 IUniV3.ExactInputParams(
                     abi.encodePacked(address(weth), uint24(500), address(want)),
                     address(this),
@@ -246,8 +244,8 @@ contract Strategy is BaseStrategy {
     function prepareMigration(address _newStrategy) internal override {
         // TODO: Transfer any non-`want` tokens to the new strategy
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
-         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
-         lpToken.safeTransfer(_newStrategy,lpToken.balanceOf(address(this)));
+        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+        lpToken.safeTransfer(_newStrategy, lpToken.balanceOf(address(this)));
     }
 
     // Override this to add all tokens/tokenized positions this contract manages
@@ -353,7 +351,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-      // ----------------- YSWAPS FUNCTIONS ---------------------
+    // ----------------- YSWAPS FUNCTIONS ---------------------
 
     function setTradeFactory(address _tradeFactory) external onlyGovernance {
         if (tradeFactory != address(0)) {
@@ -369,8 +367,8 @@ contract Strategy is BaseStrategy {
 
     function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
         _removeTradeFactoryPermissions();
-
     }
+
     function _removeTradeFactoryPermissions() internal {
         STG.safeApprove(tradeFactory, 0);
         tradeFactory = address(0);
