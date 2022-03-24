@@ -19,13 +19,15 @@ import {
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-
+import "../interfaces/ySwap/ITradeFactory.sol";
 import "../interfaces/Uniswap/IUniV3.sol"; // TODO: replace with ySwaps
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
+
+    address public tradeFactory = address(0);
 
     IERC20 internal constant weth =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -97,11 +99,13 @@ contract Strategy is BaseStrategy {
         //Perform a 0 deposit to claim any outstanding rewards
         lpStaker.deposit(0, 0);
 
-        //check STG
-        uint256 _looseSTG = balanceOfSTG();
-        if (_looseSTG != 0) {
-            uint256 _wethOutput = _sellSTGForWETH(_looseSTG);
-            _sellWETHforWant(_wethOutput);
+        if(tradeFactory == address(0)){
+            //check STG
+            uint256 _looseSTG = balanceOfSTG();
+            if (_looseSTG != 0) {
+                uint256 _wethOutput = _sellSTGForWETH(_looseSTG);
+                _sellWETHforWant(_wethOutput);
+            }
         }
 
         //grab the estimate total debt from the vault
@@ -246,6 +250,8 @@ contract Strategy is BaseStrategy {
     function prepareMigration(address _newStrategy) internal override {
         // TODO: Transfer any non-`want` tokens to the new strategy
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
+         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+         lpToken.safeTransfer(_newStrategy,lpToken.balanceOf(address(this)));
     }
 
     // Override this to add all tokens/tokenized positions this contract manages
@@ -347,5 +353,28 @@ contract Strategy is BaseStrategy {
             IERC20(_token).safeApprove(_contract, 0);
             IERC20(_token).safeApprove(_contract, _amount);
         }
+    }
+
+      // ----------------- YSWAPS FUNCTIONS ---------------------
+
+    function setTradeFactory(address _tradeFactory) external onlyGovernance {
+        if (tradeFactory != address(0)) {
+            _removeTradeFactoryPermissions();
+        }
+
+        // approve and set up trade factory
+        STG.safeApprove(_tradeFactory, type(uint256).max);
+        ITradeFactory tf = ITradeFactory(_tradeFactory);
+        tf.enable(address(STG), address(want));
+        tradeFactory = _tradeFactory;
+    }
+
+    function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
+        _removeTradeFactoryPermissions();
+
+    }
+    function _removeTradeFactoryPermissions() internal {
+        STG.safeApprove(tradeFactory, 0);
+        tradeFactory = address(0);
     }
 }
