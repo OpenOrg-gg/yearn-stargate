@@ -29,13 +29,15 @@ contract Strategy is BaseStrategy {
 
     address public tradeFactory = address(0);
 
-    IERC20 public weth;
-
+    IERC20 public constant weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    uint constant private max = type(uint).max;
+    
     address public uniV3Swapper;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
+    bool internal isOriginal = true;
     IERC20 public STG;
     IPool public liquidityPool;
     IERC20 public lpToken;
@@ -48,10 +50,50 @@ contract Strategy is BaseStrategy {
         address _vault,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _weth,
         address _uniV3Swapper,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
+        _initializeThis(
+            _lpStaker,
+            _liquidityPoolIDInLPStaking,
+            _uniV3Swapper,
+            _strategyName
+        );
+    }
+
+    function initialize(
+        address _vault,
+        address _strategist,
+        address _rewards,
+        address _keeper,
+        address _lpStaker,
+        uint16 _liquidityPoolIDInLPStaking,
+        address _uniV3Swapper,
+        string memory _strategyName
+    ) public {
+        // Make sure we only initialize one time
+        require(address(lpStaker) == address(0)); // dev: strategy already initialized
+
+        address sender = msg.sender;
+
+        // Initialize BaseStrategy
+        _initialize(_vault, _strategist, _rewards, _keeper);
+
+        // Initialize cloned instance
+        _initializeThis(
+            _lpStaker,
+            _liquidityPoolIDInLPStaking,
+            _uniV3Swapper,
+            _strategyName
+        );
+    }
+
+    function _initializeThis(
+            address _lpStaker,
+            uint16 _liquidityPoolIDInLPStaking,
+            address _uniV3Swapper,
+            string memory _strategyName
+    ) internal {
         lpStaker = ILPStaking(_lpStaker);
         STG = IERC20(lpStaker.stargate());
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
@@ -62,14 +104,40 @@ contract Strategy is BaseStrategy {
         liquidityPoolID = liquidityPool.poolId();
         stargateRouter = IStargateRouter(liquidityPool.router());
 
-        assert(address(want) == liquidityPool.token());
+        want.safeApprove(address(stargateRouter), max);
+
+        require(address(want) == liquidityPool.token());
 
         strategyName = _strategyName;
-        weth = IERC20(_weth);
         uniV3Swapper = _uniV3Swapper;
     }
 
-    // TODO: cloning
+    function clone(
+        address _vault,
+        address _strategist,
+        address _rewards,
+        address _keeper,
+        address _lpStaker,
+        uint16 _liquidityPoolIDInLPStaking,
+        address _uniV3Swapper,
+        string memory _strategyName
+    ) external returns (address payable newStrategy) {
+        require(isOriginal);
+
+        bytes20 addressBytes = bytes20(address(this));
+
+        assembly {
+        // EIP-1167 bytecode
+            let clone_code := mload(0x40)
+            mstore(clone_code, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(add(clone_code, 0x14), addressBytes)
+            mstore(add(clone_code, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
+            newStrategy := create(0, clone_code, 0x37)
+        }
+
+        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _pool, _stakeToken, _bancorRegistry);
+        emit Cloned(newStrategy);
+    }
 
     function name() external view override returns (string memory) {
         return strategyName; // E.g., 'StrategyStargateUSDC'
