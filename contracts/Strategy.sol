@@ -31,7 +31,7 @@ contract Strategy is BaseStrategy {
 
     IERC20 public constant weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     uint constant private max = type(uint).max;
-    
+
     address public uniV3Swapper;
 
     uint256 public liquidityPoolID;
@@ -135,7 +135,7 @@ contract Strategy is BaseStrategy {
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _pool, _stakeToken, _bancorRegistry);
+        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _lpStaker, _liquidityPoolIDInLPStaking, _uniV3Swapper, _strategyName);
         emit Cloned(newStrategy);
     }
 
