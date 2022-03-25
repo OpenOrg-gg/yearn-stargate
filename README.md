@@ -1,4 +1,8 @@
-# Yearn Strategy Brownie Mix
+# Yearn Strategy Brownie Mix - Stargate
+
+Due Dilligence: https://hackmd.io/@-c0MLh5CTZOQ3HyKamAsvQ/SkFqB2OG5
+
+This strategy deposits `want` into Stargate LP tokens, farms them, sells STG for want.
 
 ## What you'll find here
 
