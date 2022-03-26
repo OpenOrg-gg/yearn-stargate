@@ -87,6 +87,7 @@ def test_clone(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
 
+    cloned_strategy.setPoolFee(3000, {"from":gov})
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
