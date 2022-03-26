@@ -2,6 +2,7 @@ import pytest
 
 from brownie import chain, Wei, reverts, Contract
 
+
 def test_double_init_should_revert(
     strategy,
     vault,
@@ -13,7 +14,7 @@ def test_double_init_should_revert(
     curvePool,
     gov,
     keeper,
-    rewards
+    rewards,
 ):
     clone_tx = strategy.clone(
         vault,
@@ -43,7 +44,7 @@ def test_double_init_should_revert(
             univ3_swapper,
             curvePool,
             "RevertedStrat",
-            {"from": gov}
+            {"from": gov},
         )
 
     with reverts():
@@ -57,7 +58,7 @@ def test_double_init_should_revert(
             univ3_swapper,
             curvePool,
             "ClonedRevertedStrat",
-            {"from": gov}
+            {"from": gov},
         )
 
 
@@ -74,7 +75,7 @@ def test_clone(
     keeper,
     rewards,
     token_whale,
-    amount
+    amount,
 ):
     clone_tx = strategy.clone(
         vault,
@@ -93,11 +94,11 @@ def test_clone(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
 
-    cloned_strategy.setPoolFee(3000, {"from":gov})
+    cloned_strategy.setPoolFee(3000, {"from": gov})
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
-    vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
+    vault.addStrategy(cloned_strategy, 10_000, 0, 2**256 - 1, 0, {"from": gov})
 
-    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    token.approve(vault, 2**256 - 1, {"from": token_whale})
     vault.deposit(amount, {"from": token_whale})
 
     chain.sleep(1)
@@ -110,4 +111,3 @@ def test_clone(
 
     assert vault.strategies(cloned_strategy).dict()["totalGain"] > 0
     assert vault.strategies(cloned_strategy).dict()["totalLoss"] == 0
-

@@ -19,7 +19,7 @@ def test_migration(
     lp_staker,
     liquidity_pool_id_in_lp_staking,
     curvePool,
-    univ3_swapper
+    univ3_swapper,
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -38,12 +38,11 @@ def test_migration(
         curvePool,
         "StrategyStargateUSDC",
     )
-    previous_debt = vault.strategies(strategy).dict()['totalDebt']
+    previous_debt = vault.strategies(strategy).dict()["totalDebt"]
     vault.migrateStrategy(strategy, new_strategy, {"from": gov})
-    assert (pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
-        == 0)
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == 0
     assert (
         pytest.approx(new_strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
         == amount
     )
-    assert (vault.strategies(new_strategy).dict()['totalDebt'] == previous_debt)
+    assert vault.strategies(new_strategy).dict()["totalDebt"] == previous_debt

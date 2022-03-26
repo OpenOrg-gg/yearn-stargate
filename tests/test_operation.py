@@ -27,8 +27,18 @@ def test_operation(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
     )
 
+
 def test_operation_curve(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    gov,
 ):
     strategy.setUseCurve(True, {"from": gov})
     # Deposit to the vault
@@ -54,7 +64,17 @@ def test_operation_curve(
 
 
 def test_profitable_harvest(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, stg_token, stg_whale
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    stg_token,
+    stg_whale,
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -66,7 +86,7 @@ def test_profitable_harvest(
     tx = strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    stg_token.transfer(strategy, 100_000e18, {'from':stg_whale})
+    stg_token.transfer(strategy, 100_000e18, {"from": stg_whale})
 
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
