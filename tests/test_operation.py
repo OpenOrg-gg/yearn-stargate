@@ -18,7 +18,8 @@ def test_operation(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()
-    strategy.tend()
+    tx = strategy.tend()
+    tx.wait(1)
 
     # withdrawal
     vault.withdraw({"from": user})
@@ -45,7 +46,7 @@ def test_emergency_exit(
 
 
 def test_profitable_harvest(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, stg_token
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -54,17 +55,20 @@ def test_profitable_harvest(
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
-    strategy.harvest()
+    tx = strategy.harvest()
+    tx.wait(1)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # TODO: Add some code before harvest #2 to simulate earning yield
 
     # Harvest 2: Realize profit
     chain.sleep(1)
-    strategy.harvest()
+    tx2 = strategy.harvest()
+    tx2.wait(5)
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault
+    assert stg_token.balanceOf == 0
     # TODO: Uncomment the lines below
     # assert token.balanceOf(strategy) + profit > amount
     # assert vault.pricePerShare() > before_pps

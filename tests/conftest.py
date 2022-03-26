@@ -1,3 +1,22 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import pytest
 from brownie import config
 from brownie import Contract
@@ -40,9 +59,21 @@ def keeper(accounts):
 
 @pytest.fixture
 def token():
-    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
+    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # this should be the address of the ERC-20 used by the strategy/vault (USDC)
     yield Contract(token_address)
 
+@pytest.fixture
+def token2():
+    token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7"  # this should be the address of the ERC-20 used by the strategy/vault (USDT)
+    yield Contract(token_address)
+
+@pytest.fixture
+def token_whale(accounts):
+    yield accounts.at("0x7abe0ce388281d2acf297cb089caef3819b13448", force=True)
+
+@pytest.fixture
+def token2_whale(accounts):
+    yield accounts.at("0xd6216fc19db775df9774a6e33526131da7d19a2c", force=True)
 
 @pytest.fixture
 def stg_token():
@@ -61,17 +92,36 @@ def stargate_router():
     address = "0x8731d54E9D02c286767d56ac03e8037C07e01e98"
     yield Contract(address)
 
+@pytest.fixture
+def trade_factory():
+    yield Contract("0x99d8679bE15011dEAD893EB4F5df474a4e6a8b29")
+
+@pytest.fixture
+def ymechs_safe():
+    yield Contract("0x2C01B4AD51a67E2d8F02208F54dF9aC4c0B778B6")
 
 @pytest.fixture
 def stargate_token_pool():
     address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"  # for USDC
     yield Contract(address)
 
+@pytest.fixture(scope="module")
+def sushiswap_router(Contract):
+    yield Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
+
+@pytest.fixture(scope="module")
+def multicall_swapper(interface):
+    yield interface.MultiCallOptimizedSwapper(
+        "0xB2F65F254Ab636C96fb785cc9B4485cbeD39CDAA"
+    )
 
 @pytest.fixture(scope="session")
 def liquidity_pool_id_in_lp_staking():
     yield 0
 
+@pytest.fixture
+def SGT_whale(accounts):
+    yield accounts.at("0x485544e6fbef56d5bff61632b519ba0debdf28c1", force=True)
 
 @pytest.fixture
 def amount(accounts, token, user):
@@ -120,7 +170,6 @@ def strategy(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        weth,
         univ3_swapper,
         "StrategyStargateUSDC",
     )

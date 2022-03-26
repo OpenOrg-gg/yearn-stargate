@@ -1,10 +1,10 @@
 import pytest
+import time
 
 from brownie import chain, Wei, reverts, Contract
 
 def test_double_init_should_revert(
     strategy,
-    factory,
     vault,
     strategist,
     token,
@@ -26,10 +26,12 @@ def test_double_init_should_revert(
         "ClonedStrategy",
         {"from": strategist},
     )
-
+    clone_tx.wait(1)
+    time.sleep(1)
     cloned_strategy = Contract.from_abi(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
+    time.sleep(1)
 
     with reverts():
         strategy.initialize(
@@ -60,7 +62,6 @@ def test_double_init_should_revert(
 
 def test_clone(
     strategy,
-    factory,
     vault,
     strategist,
     token,
@@ -72,7 +73,7 @@ def test_clone(
     rewards,
     token_whale
 ):
-    clone_tx = factory.cloneMIMMinter(
+    clone_tx = strategy.clone(
         vault,
         strategist,
         rewards,
@@ -83,11 +84,10 @@ def test_clone(
         "ClonedStrategy",
         {"from": strategist},
     )
-
+    clone_tx.wait(1)
     cloned_strategy = Contract.from_abi(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
-
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
@@ -95,13 +95,15 @@ def test_clone(
     vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
 
     chain.sleep(1)
-    cloned_strategy.harvest({"from": gov})
-
+    tx = cloned_strategy.harvest({"from": gov})
+    tx.wait(1)
     # Sleep for 2 days
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
+    chain.sleep(1)
+    tx2 = cloned_strategy.harvest({"from": gov})
+    tx2.wait(1)
 
-    cloned_strategy.harvest({"from": gov})
 
     assert vault.strategies(cloned_strategy).dict()["totalGain"] > 0
     assert vault.strategies(cloned_strategy).dict()["totalLoss"] == 0
