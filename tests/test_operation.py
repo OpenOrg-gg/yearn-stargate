@@ -30,7 +30,7 @@ def test_operation(
 def test_operation_curve(
     chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov
 ):
-    strategy._toCurve(True, {"from": gov})
+    strategy.setUseCurve(True, {"from": gov})
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
     token.approve(vault.address, amount, {"from": user})
@@ -54,7 +54,7 @@ def test_operation_curve(
 
 
 def test_profitable_harvest(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, stg_token
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, stg_token, stg_whale
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -64,21 +64,21 @@ def test_profitable_harvest(
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
     tx = strategy.harvest()
-    tx.wait(1)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # TODO: Add some code before harvest #2 to simulate earning yield
+    stg_token.transfer(strategy, 100_000e18, {'from':stg_whale})
 
+    before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     chain.sleep(1)
-    tx2 = strategy.harvest()
-    tx2.wait(1)
+    tx = strategy.harvest()
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault
-    # TODO: Uncomment the lines below
-    # assert token.balanceOf(strategy) + profit > amount
-    # assert vault.pricePerShare() > before_pps
+
+    assert token.balanceOf(strategy) + profit > amount
+    assert vault.pricePerShare() > before_pps
+    assert stg_token.balanceOf(strategy) == 0
 
 
 def test_change_debt(
@@ -100,11 +100,10 @@ def test_change_debt(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # In order to pass this tests, you will need to implement prepareReturn.
-    # TODO: uncomment the following lines.
-    # vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    # chain.sleep(1)
-    # strategy.harvest()
-    # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+    vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
 def test_sweep(gov, vault, strategy, token, user, amount, weth, weth_amout):

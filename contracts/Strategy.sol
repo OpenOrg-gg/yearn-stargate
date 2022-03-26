@@ -31,14 +31,16 @@ contract Strategy is BaseStrategy {
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     uint constant private max = type(uint).max;
+    uint constant private basis = 10000;
     bool internal isOriginal = true;
 
     // Pool fee must be moved to initialize for cloning
     uint24 public poolFee;
+    uint256 public maxSlippage;
 
     IUniV3 public uniV3Swapper;
     ICurve public curvePool;
-    bool internal toCurve;
+    bool internal useCurve;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -119,13 +121,17 @@ contract Strategy is BaseStrategy {
 
         require(address(want) == liquidityPool.token());
 
-        poolFee = 3000;// We set the pool fee to 0.3%.
+        poolFee = 3000;// univ3 pool fee to 0.3%.
+        maxSlippage = 200;// curve max slippage 2%.
 
         strategyName = _strategyName;
         uniV3Swapper = IUniV3(_uniV3Swapper);
         curvePool = ICurve(_curvePool);
+        require(address(uniV3Swapper) != address(0), "Univ3 Pool must be set");
+        require(address(curvePool) != address(0), "Curve Pool must be set");
     }
-event Cloned(address indexed clone);
+
+    event Cloned(address indexed clone);
     function clone(
         address _vault,
         address _strategist,
@@ -156,7 +162,7 @@ event Cloned(address indexed clone);
     }
 
     function name() external view override returns (string memory) {
-        return strategyName; // E.g., 'StrategyStargateUSDC'
+        return strategyName;
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -178,16 +184,16 @@ event Cloned(address indexed clone);
         )
     {
         if (pendingSTGRewards() > 0) {
-            lpStaker.deposit(liquidityPoolIDInLPStaking, 0);
+            _stakeLP(0);
         }
 
         //check STG
         uint256 _looseSTG = balanceOfSTG();
         if (_looseSTG != 0) {
-            if(toCurve == false){
-                _sellRewards();
-            } else {
+            if(useCurve){
                 _sellRewardsCurve();
+            } else {
+                _sellRewardsUniv3();
             }
         }
 
@@ -220,8 +226,7 @@ event Cloned(address indexed clone);
         }
     }
 
-    event sellingRewards(address swapper, uint256 amountIn, uint24 fee);
-    function _sellRewards() internal {
+    function _sellRewardsUniv3() internal {
         uint256 availableSTG = balanceOfSTG();
         _checkAllowance(address(uniV3Swapper), address(STG), availableSTG);
 
@@ -233,16 +238,14 @@ event Cloned(address indexed clone);
                 amountIn: availableSTG,
                 amountOutMinimum: 0
             });
-        emit sellingRewards(address(uniV3Swapper), availableSTG, poolFee);
+
         uniV3Swapper.exactInput(params);
     }
 
     function _sellRewardsCurve() internal {
-        require(address(curvePool) != address(0), "Curve Pool must be set");
         uint256 availableSTG = balanceOfSTG();
         _checkAllowance(address(curvePool), address(STG), availableSTG);
-
-        uint256 expected = curvePool.get_dy(0, 1, availableSTG).mul(98).div(100);
+        uint256 expected = curvePool.get_dy(0, 1, availableSTG).mul(basis.sub(maxSlippage)).div(basis);
         curvePool.exchange(0, 1, availableSTG, expected);
     }
 
@@ -255,11 +258,10 @@ event Cloned(address indexed clone);
             if(_amountToDeposit > 0){
                 _addToLP(_amountToDeposit);
             }
-            if(balanceOfUnstakedLPToken() > 0){
-                lpStaker.deposit(
-                    liquidityPoolIDInLPStaking,
-                    balanceOfUnstakedLPToken()
-                );
+            uint256 unstakedBalance = balanceOfUnstakedLPToken();
+            if(unstakedBalance > 0){
+                //redeposit to farm
+                _stakeLP(unstakedBalance);
             }
         }
     }
@@ -273,14 +275,11 @@ event Cloned(address indexed clone);
 
         if (_liquidAssets < _amountNeeded) {
             // TODO: maybe instead of withdrawing whole balance from lpStaker & re-depositing, withdraw only the amount we need
-            lpStaker.withdraw(
-                liquidityPoolIDInLPStaking,
-                balanceOfStakedLPToken()
-            );
-
-            if(balanceOfUnstakedLPToken() > 0){
+            _unstakeLP(balanceOfStakedLPToken());
+            uint256 unstakedBalance = balanceOfUnstakedLPToken();
+            if(unstakedBalance > 0){
                 //withdraw from pool
-                _withdrawFromLP(balanceOfUnstakedLPToken());
+                _withdrawFromLP(unstakedBalance);
             }
 
             //check current want balance
@@ -290,12 +289,10 @@ event Cloned(address indexed clone);
             if (_postWithdrawWant > _amountNeeded) {
                 _addToLP(_postWithdrawWant.sub(_amountNeeded));
 
-                if(balanceOfUnstakedLPToken() > 0){
+                unstakedBalance = balanceOfUnstakedLPToken();
+                if(unstakedBalance > 0){
                     //redeposit to farm
-                    lpStaker.deposit(
-                        liquidityPoolIDInLPStaking,
-                        balanceOfUnstakedLPToken()
-                    );
+                    _stakeLP(unstakedBalance);
                 }
             }
 
@@ -323,8 +320,6 @@ event Cloned(address indexed clone);
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
     function prepareMigration(address _newStrategy) internal override {
-        // TODO: Transfer any non-`want` tokens to the new strategy
-        // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
          lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
          lpToken.safeTransfer(_newStrategy,lpToken.balanceOf(address(this)));
     }
@@ -370,7 +365,6 @@ event Cloned(address indexed clone);
         override
         returns (uint256)
     {
-        // TODO create an accurate price oracle
         return _amtInWei;
     }
 
@@ -389,6 +383,22 @@ event Cloned(address indexed clone);
             uint16(liquidityPoolID),
             _lpAmount,
             address(this)
+        );
+    }
+
+    function _stakeLP(uint256 _amountToStake) internal {
+        _amountToStake = Math.min(_amountToStake, balanceOfUnstakedLPToken());
+        lpStaker.deposit(
+            liquidityPoolIDInLPStaking,
+            _amountToStake
+        );
+    }
+
+    function _unstakeLP(uint256 _amountToUnstake) internal {
+        _amountToUnstake = Math.min(_amountToUnstake, balanceOfStakedLPToken());
+        lpStaker.withdraw(
+            liquidityPoolIDInLPStaking,
+            _amountToUnstake
         );
     }
 
@@ -436,11 +446,12 @@ event Cloned(address indexed clone);
         poolFee = _poolFee;
     }
 
-    function setCurvePool(address _newCurvePool) external onlyVaultManagers {
-        curvePool = ICurve(_newCurvePool);
+    function setMaxSlippage(uint256 _maxSlippage) external onlyVaultManagers {
+        require(maxSlippage <= basis);
+        maxSlippage = _maxSlippage;
     }
 
-    function _toCurve(bool _bool) external onlyVaultManagers{
-        toCurve = _bool;
+    function setUseCurve(bool _useCurve) external onlyVaultManagers{
+        useCurve = _useCurve;
     }
 }

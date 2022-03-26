@@ -61,6 +61,10 @@ def stg_token():
     token_address = "0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6"
     yield Contract(token_address)
 
+@pytest.fixture
+def stg_whale(accounts):
+    yield accounts.at("0xea4d6015c775af28e2dff8d23a2959542a326c9d", force=True)
+
 
 @pytest.fixture
 def lp_staker():

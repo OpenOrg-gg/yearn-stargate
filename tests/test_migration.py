@@ -38,9 +38,12 @@ def test_migration(
         curvePool,
         "StrategyStargateUSDC",
     )
+    previous_debt = vault.strategies(strategy).dict()['totalDebt']
     vault.migrateStrategy(strategy, new_strategy, {"from": gov})
-    # TODO: comment this back in once prepareMigration() is finished
-    # assert (
-    #     pytest.approx(new_strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
-    #     == amount
-    # )
+    assert (pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
+        == 0)
+    assert (
+        pytest.approx(new_strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
+        == amount
+    )
+    assert (vault.strategies(new_strategy).dict()['totalDebt'] == previous_debt)
