@@ -19,7 +19,8 @@ import {
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-import "../interfaces/Uniswap/IUniV3.sol"; // TODO: replace with ySwaps
+import "../interfaces/Uniswap/IUniV3.sol";
+import "../interfaces/Curve/ICurve.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
@@ -32,9 +33,12 @@ contract Strategy is BaseStrategy {
     uint constant private max = type(uint).max;
     bool internal isOriginal = true;
 
+    // Pool fee must be moved to initialize for cloning
     uint24 public poolFee;
 
     IUniV3 public uniV3Swapper;
+    ICurve public curvePool;
+    bool internal toCurve;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -52,12 +56,14 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
         _initializeThis(
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _uniV3Swapper,
+            _curvePool,
             _strategyName
         );
     }
@@ -70,6 +76,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -85,6 +92,7 @@ contract Strategy is BaseStrategy {
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _uniV3Swapper,
+            _curvePool,
             _strategyName
         );
     }
@@ -93,6 +101,7 @@ contract Strategy is BaseStrategy {
             address _lpStaker,
             uint16 _liquidityPoolIDInLPStaking,
             address _uniV3Swapper,
+            address _curvePool,
             string memory _strategyName
     ) internal {
         lpStaker = ILPStaking(_lpStaker);
@@ -114,6 +123,7 @@ contract Strategy is BaseStrategy {
 
         strategyName = _strategyName;
         uniV3Swapper = IUniV3(_uniV3Swapper);
+        curvePool = ICurve(_curvePool);
     }
 event Cloned(address indexed clone);
     function clone(
@@ -124,6 +134,7 @@ event Cloned(address indexed clone);
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -139,7 +150,7 @@ event Cloned(address indexed clone);
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _lpStaker, _liquidityPoolIDInLPStaking, _uniV3Swapper, _strategyName);
+        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _lpStaker, _liquidityPoolIDInLPStaking, _uniV3Swapper, _curvePool, _strategyName);
 
         emit Cloned(newStrategy);
     }
@@ -173,7 +184,11 @@ event Cloned(address indexed clone);
         //check STG
         uint256 _looseSTG = balanceOfSTG();
         if (_looseSTG != 0) {
-            _sellRewards();
+            if(toCurve == false){
+                _sellRewards();
+            } else {
+                _sellRewardsCurve();
+            }
         }
 
         //grab the estimate total debt from the vault
@@ -220,6 +235,15 @@ event Cloned(address indexed clone);
             });
         emit sellingRewards(address(uniV3Swapper), availableSTG, poolFee);
         uniV3Swapper.exactInput(params);
+    }
+
+    function _sellRewardsCurve() internal {
+        require(address(curvePool) != address(0), "Curve Pool must be set");
+        uint256 availableSTG = balanceOfSTG();
+        _checkAllowance(address(curvePool), address(STG), availableSTG);
+
+        uint256 expected = curvePool.get_dy(0, 1, availableSTG).mul(98).div(100);
+        curvePool.exchange(0, 1, availableSTG, expected);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -410,5 +434,13 @@ event Cloned(address indexed clone);
 
     function setPoolFee(uint24 _poolFee) external onlyVaultManagers {
         poolFee = _poolFee;
+    }
+
+    function setCurvePool(address _newCurvePool) external onlyVaultManagers {
+        curvePool = ICurve(_newCurvePool);
+    }
+
+    function _toCurve(bool _bool) external onlyVaultManagers{
+        toCurve = _bool;
     }
 }

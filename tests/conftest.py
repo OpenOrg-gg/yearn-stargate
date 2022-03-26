@@ -78,6 +78,10 @@ def trade_factory():
     yield Contract("0x99d8679bE15011dEAD893EB4F5df474a4e6a8b29")
 
 @pytest.fixture
+def curvePool():
+    yield Contract("0x3211C6cBeF1429da3D0d58494938299C92Ad5860")
+
+@pytest.fixture
 def ymechs_safe():
     yield Contract("0x2C01B4AD51a67E2d8F02208F54dF9aC4c0B778B6")
 
@@ -141,10 +145,19 @@ def vault(pm, gov, rewards, guardian, management, token):
     vault.setManagement(management, {"from": gov})
     yield vault
 
+@pytest.fixture
+def vault2(pm, gov, rewards, guardian, management, token2):
+    Vault = pm(config["dependencies"][0]).Vault
+    vault = guardian.deploy(Vault)
+    vault.initialize(token2, gov, rewards, "", "", guardian, management)
+    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
+    vault.setManagement(management, {"from": gov})
+    yield vault
+
 
 @pytest.fixture
 def strategy(
-    strategist, keeper, vault, Strategy, gov, lp_staker, liquidity_pool_id_in_lp_staking, weth, univ3_swapper
+    strategist, keeper, vault, Strategy, gov, lp_staker, liquidity_pool_id_in_lp_staking, weth, univ3_swapper, curvePool
 ):
     strategy = strategist.deploy(
         Strategy,
@@ -152,6 +165,7 @@ def strategy(
         lp_staker,
         liquidity_pool_id_in_lp_staking,
         univ3_swapper,
+        curvePool,
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper)

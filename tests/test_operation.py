@@ -27,22 +27,30 @@ def test_operation(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
     )
 
-
-def test_emergency_exit(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+def test_operation_curve(
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov
 ):
+    strategy._toCurve(True, {"from": gov})
     # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # harvest
     chain.sleep(1)
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # set emergency and exit
-    strategy.setEmergencyExit()
-    chain.sleep(1)
-    strategy.harvest()
-    assert strategy.estimatedTotalAssets() < amount
+    # tend()
+    tx2 = strategy.tend()
+    tx2.wait(1)
+
+    # withdrawal
+    vault.withdraw({"from": user})
+    assert (
+        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
+    )
 
 
 def test_profitable_harvest(
@@ -64,11 +72,10 @@ def test_profitable_harvest(
     # Harvest 2: Realize profit
     chain.sleep(1)
     tx2 = strategy.harvest()
-    tx2.wait(5)
+    tx2.wait(1)
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault
-    assert stg_token.balanceOf == 0
     # TODO: Uncomment the lines below
     # assert token.balanceOf(strategy) + profit > amount
     # assert vault.pricePerShare() > before_pps
