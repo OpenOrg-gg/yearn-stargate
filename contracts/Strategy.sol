@@ -2,6 +2,7 @@
 
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
+/* pragma abicoder v2; */
 
 // These are the core Yearn libraries
 import {
@@ -29,13 +30,13 @@ contract Strategy is BaseStrategy {
     IERC20 internal constant weth =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    address internal constant uniswapv3 =
-        0xE592427A0AEce92De3Edee1F18E0157C05861564;
-
     uint constant private max = type(uint).max;
     bool internal isOriginal = true;
 
-    address public uniV3Swapper;
+    // We will set the pool fee to 0.3%.
+    uint24 public poolFee = 3000;
+
+    IUniV3 public uniV3Swapper;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -112,7 +113,7 @@ contract Strategy is BaseStrategy {
         require(address(want) == liquidityPool.token());
 
         strategyName = _strategyName;
-        uniV3Swapper = _uniV3Swapper;
+        uniV3Swapper = IUniV3(_uniV3Swapper);
     }
 event Cloned(address indexed clone);
     function clone(
@@ -139,7 +140,7 @@ event Cloned(address indexed clone);
         }
 
         Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _lpStaker, _liquidityPoolIDInLPStaking, _uniV3Swapper, _strategyName);
-        
+
         emit Cloned(newStrategy);
     }
 
@@ -173,8 +174,9 @@ event Cloned(address indexed clone);
         //check STG
         uint256 _looseSTG = balanceOfSTG();
         if (_looseSTG != 0) {
-            uint256 _wethOutput = _sellSTGForWETH(_looseSTG);
-            _sellWETHforWant(_wethOutput);
+            /* uint256 _wethOutput = _sellSTGForWETH(_looseSTG); */
+            /* _sellWETHforWant(_wethOutput); */
+            _sellRewards();
         }
 
         //grab the estimate total debt from the vault
@@ -210,38 +212,19 @@ event Cloned(address indexed clone);
         // NOTE: Should try to free up at least `_debtOutstanding` of underlying position
     }
 
-    // Sells our STG for WETH
-    function _sellSTGForWETH(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniswapv3, address(STG), _amount);
+    function _sellRewards() internal {
+        uint256 availableSTG = balanceOfSTG();
+        _checkAllowance(address(uniV3Swapper), address(STG), availableSTG);
 
-        uint256 _wethOutput =
-            IUniV3(uniswapv3).exactInput(
-                IUniV3.ExactInputParams(
-                    abi.encodePacked(address(STG), uint24(500), address(weth)),
-                    address(this),
-                    block.timestamp,
-                    _amount,
-                    uint256(1)
-                )
-            );
-        return _wethOutput;
-    }
-
-    // Sells our WETH for want
-    function _sellWETHforWant(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniswapv3, address(weth), _amount);
-
-        uint256 _usdcOutput =
-            IUniV3(uniswapv3).exactInput(
-                IUniV3.ExactInputParams(
-                    abi.encodePacked(address(weth), uint24(500), address(want)),
-                    address(this),
-                    block.timestamp,
-                    _amount,
-                    uint256(1)
-                )
-            );
-        return _usdcOutput;
+        IUniV3.ExactInputParams memory params =
+            IUniV3.ExactInputParams({
+                path: abi.encodePacked(address(STG), poolFee, address(weth), poolFee, address(want)),
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: availableSTG,
+                amountOutMinimum: 0
+            });
+        uniV3Swapper.exactInput(params);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -430,5 +413,9 @@ event Cloned(address indexed clone);
             IERC20(_token).safeApprove(_contract, 0);
             IERC20(_token).safeApprove(_contract, _amount);
         }
+    }
+
+    function setPoolFee(uint24 _poolFee) external onlyVaultManagers {
+        poolFee = _poolFee;
     }
 }

@@ -1,22 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import pytest
 from brownie import config
 from brownie import Contract
@@ -125,7 +106,7 @@ def SGT_whale(accounts):
 
 @pytest.fixture
 def amount(accounts, token, user):
-    amount = 10_000 * 10 ** token.decimals()
+    amount = 100_000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
     reserve = accounts.at("0x7abe0ce388281d2acf297cb089caef3819b13448", force=True)
