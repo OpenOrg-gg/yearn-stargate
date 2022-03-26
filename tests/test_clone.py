@@ -10,6 +10,7 @@ def test_double_init_should_revert(
     lp_staker,
     liquidity_pool_id_in_lp_staking,
     univ3_swapper,
+    curvePool,
     gov,
     keeper,
     rewards
@@ -22,6 +23,7 @@ def test_double_init_should_revert(
         lp_staker,
         liquidity_pool_id_in_lp_staking,
         univ3_swapper,
+        curvePool,
         "ClonedStrategy",
         {"from": strategist},
     )
@@ -39,6 +41,7 @@ def test_double_init_should_revert(
             lp_staker,
             liquidity_pool_id_in_lp_staking,
             univ3_swapper,
+            curvePool,
             "RevertedStrat",
             {"from": gov}
         )
@@ -52,6 +55,7 @@ def test_double_init_should_revert(
             lp_staker,
             liquidity_pool_id_in_lp_staking,
             univ3_swapper,
+            curvePool,
             "ClonedRevertedStrat",
             {"from": gov}
         )
@@ -65,6 +69,7 @@ def test_clone(
     lp_staker,
     liquidity_pool_id_in_lp_staking,
     univ3_swapper,
+    curvePool,
     gov,
     keeper,
     rewards,
@@ -79,6 +84,7 @@ def test_clone(
         lp_staker,
         liquidity_pool_id_in_lp_staking,
         univ3_swapper,
+        curvePool,
         "ClonedStrategy",
         {"from": strategist},
     )
@@ -87,6 +93,7 @@ def test_clone(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
 
+    cloned_strategy.setPoolFee(3000, {"from":gov})
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
@@ -103,3 +110,4 @@ def test_clone(
 
     assert vault.strategies(cloned_strategy).dict()["totalGain"] > 0
     assert vault.strategies(cloned_strategy).dict()["totalLoss"] == 0
+
