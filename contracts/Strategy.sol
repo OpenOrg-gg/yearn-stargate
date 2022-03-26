@@ -127,6 +127,7 @@ contract Strategy is BaseStrategy {
         strategyName = _strategyName;
         uniV3Swapper = IUniV3(_uniV3Swapper);
         curvePool = ICurve(_curvePool);
+
         require(address(uniV3Swapper) != address(0), "Univ3 Pool must be set");
         require(address(curvePool) != address(0), "Curve Pool must be set");
     }
@@ -447,7 +448,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setMaxSlippage(uint256 _maxSlippage) external onlyVaultManagers {
-        require(maxSlippage <= basis);
+        require(_maxSlippage <= basis);
         maxSlippage = _maxSlippage;
     }
 
