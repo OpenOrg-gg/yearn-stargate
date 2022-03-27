@@ -63,6 +63,7 @@ def test_basic_shutdown(
     strategy.harvest()  ## Remove funds from strategy
 
     assert token.balanceOf(strategy) == 0
+    assert strategy.estimatedTotalAssets() == 0
     assert (
         pytest.approx(token.balanceOf(vault), rel=RELATIVE_APPROX) == amount
     )  ## The vault has all funds

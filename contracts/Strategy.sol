@@ -19,25 +19,32 @@ import {
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-import "../interfaces/ySwap/ITradeFactory.sol";
-import "../interfaces/Uniswap/IUniV3.sol"; // TODO: replace with ySwaps
+import "../interfaces/Uniswap/IUniV3.sol";
+import "../interfaces/Curve/ICurve.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
 
-    address public tradeFactory = address(0);
+    IERC20 internal constant weth =
+        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    IERC20 public constant weth = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    uint constant private max = type(uint).max;
+    uint256 private constant max = type(uint256).max;
+    uint256 private constant basis = 10000;
+    bool internal isOriginal = true;
 
-    address public uniV3Swapper;
+    // Pool fee must be moved to initialize for cloning
+    uint24 public poolFee;
+    uint256 public maxSlippage;
+
+    IUniV3 public uniV3Swapper;
+    ICurve public curvePool;
+    bool internal useCurve;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
-    bool internal isOriginal = true;
     IERC20 public STG;
     IPool public liquidityPool;
     IERC20 public lpToken;
@@ -51,12 +58,14 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
         _initializeThis(
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _uniV3Swapper,
+            _curvePool,
             _strategyName
         );
     }
@@ -69,6 +78,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -84,15 +94,17 @@ contract Strategy is BaseStrategy {
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _uniV3Swapper,
+            _curvePool,
             _strategyName
         );
     }
 
     function _initializeThis(
-            address _lpStaker,
-            uint16 _liquidityPoolIDInLPStaking,
-            address _uniV3Swapper,
-            string memory _strategyName
+        address _lpStaker,
+        uint16 _liquidityPoolIDInLPStaking,
+        address _uniV3Swapper,
+        address _curvePool,
+        string memory _strategyName
     ) internal {
         lpStaker = ILPStaking(_lpStaker);
         STG = IERC20(lpStaker.stargate());
@@ -105,11 +117,22 @@ contract Strategy is BaseStrategy {
         stargateRouter = IStargateRouter(liquidityPool.router());
 
         want.safeApprove(address(stargateRouter), max);
-        require(address(want) == liquidityPool.token()); //dev: want should be the same as the liquidity pool token
+        lpToken.safeApprove(address(lpStaker), max);
+
+        require(address(want) == liquidityPool.token());
+
+        poolFee = 3000; // univ3 pool fee to 0.3%.
+        maxSlippage = 200; // curve max slippage 2%.
 
         strategyName = _strategyName;
-        uniV3Swapper = _uniV3Swapper;
+        uniV3Swapper = IUniV3(_uniV3Swapper);
+        curvePool = ICurve(_curvePool);
+
+        require(address(uniV3Swapper) != address(0), "Univ3 Pool must be set");
+        require(address(curvePool) != address(0), "Curve Pool must be set");
     }
+
+    event Cloned(address indexed clone);
 
     function clone(
         address _vault,
@@ -119,6 +142,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         address _uniV3Swapper,
+        address _curvePool,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -126,20 +150,37 @@ contract Strategy is BaseStrategy {
         bytes20 addressBytes = bytes20(address(this));
 
         assembly {
-        // EIP-1167 bytecode
+            // EIP-1167 bytecode
             let clone_code := mload(0x40)
-            mstore(clone_code, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(
+                clone_code,
+                0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000
+            )
             mstore(add(clone_code, 0x14), addressBytes)
-            mstore(add(clone_code, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
+            mstore(
+                add(clone_code, 0x28),
+                0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000
+            )
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Strategy(newStrategy).initialize(_vault, _strategist, _rewards, _keeper, _lpStaker, _liquidityPoolIDInLPStaking, _uniV3Swapper, _strategyName);
+        Strategy(newStrategy).initialize(
+            _vault,
+            _strategist,
+            _rewards,
+            _keeper,
+            _lpStaker,
+            _liquidityPoolIDInLPStaking,
+            _uniV3Swapper,
+            _curvePool,
+            _strategyName
+        );
+
         emit Cloned(newStrategy);
     }
 
     function name() external view override returns (string memory) {
-        return strategyName; // E.g., 'StrategyStargateUSDC'
+        return strategyName;
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -147,7 +188,6 @@ contract Strategy is BaseStrategy {
     }
 
     function pendingSTGRewards() public view returns (uint256) {
-        // Is this needed?
         return
             lpStaker.pendingStargate(liquidityPoolIDInLPStaking, address(this));
     }
@@ -161,17 +201,17 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        //Perform a 0 deposit to claim any outstanding rewards if there are any
-        if (pendingSTGRewards > 0) {
-            lpStaker.deposit(liquidityPoolIDInLPStaking, 0);
+        if (pendingSTGRewards() > 0) {
+            _stakeLP(0);
         }
 
-        if (tradeFactory == address(0)) {
-            //check STG
-            uint256 _looseSTG = balanceOfSTG();
-            if (_looseSTG != 0) {
-                uint256 _wethOutput = _sellSTGForWETH(_looseSTG);
-                _sellWETHforWant(_wethOutput);
+        //check STG
+        uint256 _looseSTG = balanceOfSTG();
+        if (_looseSTG != 0) {
+            if (useCurve) {
+                _sellRewardsCurve();
+            } else {
+                _sellRewardsUniv3();
             }
         }
 
@@ -179,19 +219,19 @@ contract Strategy is BaseStrategy {
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
-        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-
         if (_totalAssets >= _vaultDebt) {
             // Implicitly, _profit & _loss are 0 before we change them.
             _profit = _totalAssets.sub(_vaultDebt);
+        } else {
+            _loss = _vaultDebt.sub(_totalAssets);
         }
 
         //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
-        uint256 _amountFreed;
-        uint256 _toLiquidate = _debtOutstanding.add(_profit);
-        if (_toLiquidate > 0) {
-            (_amountFreed, _loss) = liquidatePosition(_toLiquidate);
-        }
+
+        (uint256 _amountFreed, uint256 _liquidationLoss) =
+            liquidatePosition(_debtOutstanding.add(_profit));
+
+        _loss = _loss.add(_liquidationLoss);
 
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
 
@@ -204,38 +244,31 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // Sells our STG for WETH
-    function _sellSTGForWETH(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniV3Swapper, address(STG), _amount);
+    function _sellRewardsUniv3() internal {
+        uint256 availableSTG = balanceOfSTG();
+        _checkAllowance(address(uniV3Swapper), address(STG), availableSTG);
 
-        uint256 _wethOutput =
-            IUniV3(uniV3Swapper).exactInput(
-                IUniV3.ExactInputParams(
-                    abi.encodePacked(address(STG), uint24(500), address(weth)),
-                    address(this),
-                    block.timestamp,
-                    _amount,
-                    uint256(1)
-                )
-            );
-        return _wethOutput;
+        IUniV3.ExactInputParams memory params =
+            IUniV3.ExactInputParams({
+                path: abi.encodePacked(address(STG), poolFee, address(want)),
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: availableSTG,
+                amountOutMinimum: 0
+            });
+
+        uniV3Swapper.exactInput(params);
     }
 
-    // Sells our WETH for want
-    function _sellWETHforWant(uint256 _amount) internal returns (uint256) {
-        _checkAllowance(uniV3Swapper, address(weth), _amount);
-
-        uint256 _usdcOutput =
-            IUniV3(uniV3Swapper).exactInput(
-                IUniV3.ExactInputParams(
-                    abi.encodePacked(address(weth), uint24(500), address(want)),
-                    address(this),
-                    block.timestamp,
-                    _amount,
-                    uint256(1)
-                )
-            );
-        return _usdcOutput;
+    function _sellRewardsCurve() internal {
+        uint256 availableSTG = balanceOfSTG();
+        _checkAllowance(address(curvePool), address(STG), availableSTG);
+        uint256 expected =
+            curvePool
+                .get_dy(0, 1, availableSTG)
+                .mul(basis.sub(maxSlippage))
+                .div(basis);
+        curvePool.exchange(0, 1, availableSTG, expected);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -244,11 +277,14 @@ contract Strategy is BaseStrategy {
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
 
-            _addToLP(_amountToDeposit);
-            lpStaker.deposit(
-                liquidityPoolIDInLPStaking,
-                balanceOfUnstakedLPToken()
-            );
+            if (_amountToDeposit > 0) {
+                _addToLP(_amountToDeposit);
+            }
+            uint256 unstakedBalance = balanceOfUnstakedLPToken();
+            if (unstakedBalance > 0) {
+                //redeposit to farm
+                _stakeLP(unstakedBalance);
+            }
         }
     }
 
@@ -257,19 +293,16 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
-        // NOTE: Maintain invariant `want.balanceOf(this) >= _liquidatedAmount`
-        // NOTE: Maintain invariant `_liquidatedAmount + _loss <= _amountNeeded`
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
             // TODO: maybe instead of withdrawing whole balance from lpStaker & re-depositing, withdraw only the amount we need
-            lpStaker.withdraw(
-                liquidityPoolIDInLPStaking,
-                balanceOfStakedLPToken()
-            );
-
-            //withdraw from pool
-            _withdrawFromLP(balanceOfUnstakedLPToken());
+            _unstakeLP(balanceOfStakedLPToken());
+            uint256 unstakedBalance = balanceOfUnstakedLPToken();
+            if (unstakedBalance > 0) {
+                //withdraw from pool
+                _withdrawFromLP(unstakedBalance);
+            }
 
             //check current want balance
             uint256 _postWithdrawWant = balanceOfWant();
@@ -278,11 +311,11 @@ contract Strategy is BaseStrategy {
             if (_postWithdrawWant > _amountNeeded) {
                 _addToLP(_postWithdrawWant.sub(_amountNeeded));
 
-                //redeposit to farm
-                lpStaker.deposit(
-                    liquidityPoolIDInLPStaking,
-                    balanceOfUnstakedLPToken()
-                );
+                unstakedBalance = balanceOfUnstakedLPToken();
+                if (unstakedBalance > 0) {
+                    //redeposit to farm
+                    _stakeLP(unstakedBalance);
+                }
             }
 
             _liquidAssets = balanceOfWant();
@@ -309,8 +342,6 @@ contract Strategy is BaseStrategy {
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
     function prepareMigration(address _newStrategy) internal override {
-        // TODO: Transfer any non-`want` tokens to the new strategy
-        // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
         lpToken.safeTransfer(_newStrategy, lpToken.balanceOf(address(this)));
     }
@@ -356,7 +387,6 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256)
     {
-        // TODO create an accurate price oracle
         return _amtInWei;
     }
 
@@ -370,12 +400,22 @@ contract Strategy is BaseStrategy {
     }
 
     function _withdrawFromLP(uint256 _lpAmount) internal {
-        _lpAmount = Math.min(balanceOfStakedLPToken(), _lpAmount); // we don't want to withdraw more than we have
+        _lpAmount = Math.min(balanceOfUnstakedLPToken(), _lpAmount); // we don't want to withdraw more than we have
         stargateRouter.instantRedeemLocal(
             uint16(liquidityPoolID),
             _lpAmount,
             address(this)
         );
+    }
+
+    function _stakeLP(uint256 _amountToStake) internal {
+        _amountToStake = Math.min(_amountToStake, balanceOfUnstakedLPToken());
+        lpStaker.deposit(liquidityPoolIDInLPStaking, _amountToStake);
+    }
+
+    function _unstakeLP(uint256 _amountToUnstake) internal {
+        _amountToUnstake = Math.min(_amountToUnstake, balanceOfStakedLPToken());
+        lpStaker.withdraw(liquidityPoolIDInLPStaking, _amountToUnstake);
     }
 
     function balanceOfWant() public view returns (uint256) {
@@ -418,26 +458,16 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // ----------------- YSWAPS FUNCTIONS ---------------------
-
-    function setTradeFactory(address _tradeFactory) external onlyGovernance {
-        if (tradeFactory != address(0)) {
-            _removeTradeFactoryPermissions();
-        }
-
-        // approve and set up trade factory
-        STG.safeApprove(_tradeFactory, type(uint256).max);
-        ITradeFactory tf = ITradeFactory(_tradeFactory);
-        tf.enable(address(STG), address(want));
-        tradeFactory = _tradeFactory;
+    function setPoolFee(uint24 _poolFee) external onlyVaultManagers {
+        poolFee = _poolFee;
     }
 
-    function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
-        _removeTradeFactoryPermissions();
+    function setMaxSlippage(uint256 _maxSlippage) external onlyVaultManagers {
+        require(_maxSlippage <= basis);
+        maxSlippage = _maxSlippage;
     }
 
-    function _removeTradeFactoryPermissions() internal {
-        STG.safeApprove(tradeFactory, 0);
-        tradeFactory = address(0);
+    function setUseCurve(bool _useCurve) external onlyVaultManagers {
+        useCurve = _useCurve;
     }
 }
