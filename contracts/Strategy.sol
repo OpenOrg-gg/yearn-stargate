@@ -293,6 +293,8 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
+        _amountNeeded = Math.min(_amountNeeded, estimatedTotalAssets());
+
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
