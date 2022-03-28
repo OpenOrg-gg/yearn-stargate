@@ -84,8 +84,6 @@ contract Strategy is BaseStrategy {
         // Make sure we only initialize one time
         require(address(lpStaker) == address(0)); // dev: strategy already initialized
 
-        address sender = msg.sender;
-
         // Initialize BaseStrategy
         _initialize(_vault, _strategist, _rewards, _keeper);
 
@@ -116,7 +114,6 @@ contract Strategy is BaseStrategy {
         liquidityPoolID = liquidityPool.poolId();
         stargateRouter = IStargateRouter(liquidityPool.router());
 
-        want.safeApprove(address(stargateRouter), max);
         lpToken.safeApprove(address(lpStaker), max);
 
         require(address(want) == liquidityPool.token());
@@ -293,8 +290,6 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
-        _amountNeeded = Math.min(_amountNeeded, estimatedTotalAssets());
-
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
@@ -332,7 +327,7 @@ contract Strategy is BaseStrategy {
     }
 
     function liquidateAllPositions() internal override returns (uint256) {
-        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+        _emergencyUnstakeLP();
 
         uint256 _lpTokenBalance = balanceOfUnstakedLPToken();
         if (_lpTokenBalance > 0) {
@@ -344,8 +339,8 @@ contract Strategy is BaseStrategy {
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
     function prepareMigration(address _newStrategy) internal override {
-        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
-        lpToken.safeTransfer(_newStrategy, lpToken.balanceOf(address(this)));
+        _emergencyUnstakeLP();
+        lpToken.safeTransfer(_newStrategy, balanceOfUnstakedLPToken());
     }
 
     // Override this to add all tokens/tokenized positions this contract manages
@@ -411,13 +406,15 @@ contract Strategy is BaseStrategy {
     }
 
     function _stakeLP(uint256 _amountToStake) internal {
-        _amountToStake = Math.min(_amountToStake, balanceOfUnstakedLPToken());
         lpStaker.deposit(liquidityPoolIDInLPStaking, _amountToStake);
     }
 
     function _unstakeLP(uint256 _amountToUnstake) internal {
-        _amountToUnstake = Math.min(_amountToUnstake, balanceOfStakedLPToken());
         lpStaker.withdraw(liquidityPoolIDInLPStaking, _amountToUnstake);
+    }
+
+    function _emergencyUnstakeLP() internal {
+        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
     }
 
     function balanceOfWant() public view returns (uint256) {

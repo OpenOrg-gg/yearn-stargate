@@ -160,7 +160,7 @@ def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
     vault.initialize(token, gov, rewards, "", "", guardian, management)
-    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
+    vault.setDepositLimit(2**256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
 
@@ -170,7 +170,7 @@ def vault2(pm, gov, rewards, guardian, management, token2):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
     vault.initialize(token2, gov, rewards, "", "", guardian, management)
-    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
+    vault.setDepositLimit(2**256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
 
@@ -198,7 +198,7 @@ def strategy(
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper)
-    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    vault.addStrategy(strategy, 10_000, 0, 2**256 - 1, 1_000, {"from": gov})
     yield strategy
 
 
