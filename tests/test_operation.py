@@ -1,5 +1,5 @@
 import brownie
-from brownie import Contract
+from brownie import Contract, ZERO_ADDRESS
 import pytest
 
 
@@ -163,3 +163,39 @@ def test_triggers(
 
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)
+
+def test_losses(
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, lp_staker, stargate_token_pool, keeper
+):
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # tend()
+    tx = strategy.tend()
+    tx.wait(1)
+
+    # simulate getting rekt
+    strategy_account = accounts.at(strategy.address, force=True)
+
+
+    lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
+    stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy), {"from": strategy_account})
+
+    chain.sleep(1)
+    tx = strategy.harvest()
+
+    assert pytest.approx(tx.events['StrategyReported']['loss'], rel=RELATIVE_APPROX) == amount
+
+    # withdrawal
+    vault.withdraw({"from": user})
+    assert (
+        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before - amount
+    )

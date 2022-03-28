@@ -290,6 +290,7 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
+        uint256 _assetsBefore = estimatedTotalAssets();
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
@@ -318,9 +319,11 @@ contract Strategy is BaseStrategy {
             _liquidAssets = balanceOfWant();
         }
 
+        uint256 _assetsAfter = estimatedTotalAssets();
+
         if (_amountNeeded > _liquidAssets) {
             _liquidatedAmount = _liquidAssets;
-            _loss = _amountNeeded.sub(_liquidAssets);
+            _loss = _assetsBefore.sub(_assetsAfter);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
