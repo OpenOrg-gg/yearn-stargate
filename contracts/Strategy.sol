@@ -323,7 +323,9 @@ contract Strategy is BaseStrategy {
 
         if (_amountNeeded > _liquidAssets) {
             _liquidatedAmount = _liquidAssets;
-            _loss = _assetsBefore.sub(_assetsAfter);
+            _loss = _assetsAfter > _assetsBefore
+                ? 0
+                : _assetsBefore.sub(_assetsAfter);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
