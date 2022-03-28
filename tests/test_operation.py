@@ -164,8 +164,20 @@ def test_triggers(
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)
 
+
 def test_losses(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, lp_staker, stargate_token_pool, keeper
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    lp_staker,
+    stargate_token_pool,
+    keeper,
 ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
@@ -185,17 +197,26 @@ def test_losses(
     # simulate getting rekt
     strategy_account = accounts.at(strategy.address, force=True)
 
-
-    lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
-    stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy), {"from": strategy_account})
+    lp_staker.emergencyWithdraw(
+        strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account}
+    )
+    stargate_token_pool.transfer(
+        ZERO_ADDRESS,
+        stargate_token_pool.balanceOf(strategy),
+        {"from": strategy_account},
+    )
 
     chain.sleep(1)
     tx = strategy.harvest()
 
-    assert pytest.approx(tx.events['StrategyReported']['loss'], rel=RELATIVE_APPROX) == amount
+    assert (
+        pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX)
+        == amount
+    )
 
     # withdrawal
     vault.withdraw({"from": user})
     assert (
-        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before - amount
+        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX)
+        == user_balance_before - amount
     )
