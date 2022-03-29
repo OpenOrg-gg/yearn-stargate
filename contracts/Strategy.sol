@@ -216,22 +216,24 @@ contract Strategy is BaseStrategy {
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
-        _profit = _totalAssets > _vaultDebt
-           ? _totalAssets.sub(_vaultDebt)
-           : 0;
+        _profit = _totalAssets > _vaultDebt ? _totalAssets.sub(_vaultDebt) : 0;
 
         //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
         uint256 _amountFreed;
         uint256 _toLiquidate = _debtOutstanding.add(_profit);
         uint256 _wantBalance = balanceOfWant();
 
-        if(_toLiquidate > _wantBalance){
-            (_amountFreed, _loss) = withdrawSome(_toLiquidate.sub(_wantBalance));
+        if (_toLiquidate > _wantBalance) {
+            (_amountFreed, _loss) = withdrawSome(
+                _toLiquidate.sub(_wantBalance)
+            );
         }
 
         _totalAssets = estimatedTotalAssets();
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-        _loss = _loss.add(_vaultDebt > _totalAssets?_vaultDebt.sub(_totalAssets):0);
+        _loss = _loss.add(
+            _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
+        );
 
         if (_loss > _profit) {
             _loss = _loss.sub(_profit);
@@ -290,7 +292,6 @@ contract Strategy is BaseStrategy {
         internal
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
-
         uint256 _preWithdrawWant = balanceOfWant();
         if (_amountNeeded > 0 && balanceOfStakedLPToken() > 0) {
             _unstakeLP(balanceOfStakedLPToken());
