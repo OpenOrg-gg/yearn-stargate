@@ -204,7 +204,7 @@ contract Strategy is BaseStrategy {
 
         //check STG
         uint256 _looseSTG = balanceOfSTG();
-        if (_looseSTG != 0) {
+        if (_looseSTG > 0) {
             if (useCurve) {
                 _sellRewardsCurve();
             } else {
@@ -216,21 +216,24 @@ contract Strategy is BaseStrategy {
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
-        if (_totalAssets >= _vaultDebt) {
-            // Implicitly, _profit & _loss are 0 before we change them.
-            _profit = _totalAssets.sub(_vaultDebt);
-        } else {
-            _loss = _vaultDebt.sub(_totalAssets);
-        }
+        _profit = _totalAssets > _vaultDebt ? _totalAssets.sub(_vaultDebt) : 0;
 
         //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
+        uint256 _amountFreed;
+        uint256 _toLiquidate = _debtOutstanding.add(_profit);
+        uint256 _wantBalance = balanceOfWant();
 
-        (uint256 _amountFreed, uint256 _liquidationLoss) =
-            liquidatePosition(_debtOutstanding.add(_profit));
+        if (_toLiquidate > _wantBalance) {
+            (_amountFreed, _loss) = withdrawSome(
+                _toLiquidate.sub(_wantBalance)
+            );
+        }
 
-        _loss = _loss.add(_liquidationLoss);
-
+        _totalAssets = estimatedTotalAssets();
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+        _loss = _loss.add(
+            _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
+        );
 
         if (_loss > _profit) {
             _loss = _loss.sub(_profit);
@@ -285,16 +288,12 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function liquidatePosition(uint256 _amountNeeded)
+    function withdrawSome(uint256 _amountNeeded)
         internal
-        override
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
-        uint256 _assetsBefore = estimatedTotalAssets();
-        uint256 _liquidAssets = balanceOfWant();
-
-        if (_liquidAssets < _amountNeeded) {
-            // TODO: maybe instead of withdrawing whole balance from lpStaker & re-depositing, withdraw only the amount we need
+        uint256 _preWithdrawWant = balanceOfWant();
+        if (_amountNeeded > 0 && balanceOfStakedLPToken() > 0) {
             _unstakeLP(balanceOfStakedLPToken());
             uint256 unstakedBalance = balanceOfUnstakedLPToken();
             if (unstakedBalance > 0) {
@@ -305,8 +304,9 @@ contract Strategy is BaseStrategy {
             //check current want balance
             uint256 _postWithdrawWant = balanceOfWant();
 
+            uint256 _unstakedWant = _postWithdrawWant.sub(_preWithdrawWant);
             //redeposit to pool
-            if (_postWithdrawWant > _amountNeeded) {
+            if (_unstakedWant > _amountNeeded) {
                 _addToLP(_postWithdrawWant.sub(_amountNeeded));
 
                 unstakedBalance = balanceOfUnstakedLPToken();
@@ -315,20 +315,36 @@ contract Strategy is BaseStrategy {
                     _stakeLP(unstakedBalance);
                 }
             }
-
-            _liquidAssets = balanceOfWant();
         }
 
-        uint256 _assetsAfter = estimatedTotalAssets();
-
+        uint256 _liquidAssets = balanceOfWant().sub(_preWithdrawWant);
         if (_amountNeeded > _liquidAssets) {
             _liquidatedAmount = _liquidAssets;
-            _loss = _assetsAfter > _assetsBefore
-                ? 0
-                : _assetsBefore.sub(_assetsAfter);
+            _loss = _amountNeeded.sub(_liquidAssets);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
+    }
+
+    function liquidatePosition(uint256 _amountNeeded)
+        internal
+        override
+        returns (uint256 _liquidatedAmount, uint256 _loss)
+    {
+        uint256 _liquidAssets = balanceOfWant();
+
+        if (_liquidAssets < _amountNeeded) {
+            (, _loss) = withdrawSome(_amountNeeded.sub(_liquidAssets));
+            _liquidAssets = balanceOfWant();
+        }
+
+        if (_amountNeeded > _liquidAssets) {
+            _liquidatedAmount = _liquidAssets;
+            _loss = _amountNeeded.sub(_liquidAssets);
+        } else {
+            _liquidatedAmount = _amountNeeded;
+        }
+        require(_amountNeeded == _liquidatedAmount.add(_loss), "!check");
     }
 
     function liquidateAllPositions() internal override returns (uint256) {
