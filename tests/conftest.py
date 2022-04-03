@@ -59,6 +59,10 @@ def token_whale(accounts):
 def token2_whale(accounts):
     yield accounts.at("0xd6216fc19db775df9774a6e33526131da7d19a2c", force=True)
 
+@pytest.fixture
+def token_lp():
+    address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"
+    yield Contract(address)
 
 @pytest.fixture
 def stg_token():
@@ -68,7 +72,7 @@ def stg_token():
 
 @pytest.fixture
 def stg_whale(accounts):
-    yield accounts.at("0x2faf487a4414fe77e2327f0bf4ae2a264a776ad2", force=True)
+    yield accounts.at("0x32e46cab87109ee6ede7d03d263c47be987238b9", force=True)
 
 
 @pytest.fixture
@@ -125,6 +129,9 @@ def liquidity_pool_id_in_lp_staking():
 def SGT_whale(accounts):
     yield accounts.at("0x485544e6fbef56d5bff61632b519ba0debdf28c1", force=True)
 
+@pytest.fixture
+def token_LP_whale(accounts):
+    yield accounts.at("0x67fc8c432448f9a8d541c17579ef7a142378d5ad", force=True)
 
 @pytest.fixture
 def amount(accounts, token, user):
@@ -160,7 +167,7 @@ def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
     vault.initialize(token, gov, rewards, "", "", guardian, management)
-    vault.setDepositLimit(2**256 - 1, {"from": gov})
+    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
 
@@ -170,7 +177,7 @@ def vault2(pm, gov, rewards, guardian, management, token2):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
     vault.initialize(token2, gov, rewards, "", "", guardian, management)
-    vault.setDepositLimit(2**256 - 1, {"from": gov})
+    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
 
@@ -198,7 +205,7 @@ def strategy(
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper)
-    vault.addStrategy(strategy, 10_000, 0, 2**256 - 1, 1_000, {"from": gov})
+    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
 
