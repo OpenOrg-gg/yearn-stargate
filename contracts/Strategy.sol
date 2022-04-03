@@ -190,19 +190,8 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        if (pendingSTGRewards() > 0) {
-            _stakeLP(0);
-        }
-
-        //check STG
-        uint256 _looseSTG = balanceOfSTG();
-        if (_looseSTG > 0) {
-            if (useCurve) {
-                _sellRewardsCurve();
-            } else {
-                _sellRewardsUniv3();
-            }
-        }
+        _claimRewards();
+        _sellRewards();
 
         //grab the estimate total debt from the vault
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
@@ -484,11 +473,13 @@ contract Strategy is BaseStrategy {
         useCurve = _useCurve;
     }
 
-    function claimRewardToWant() external onlyVaultManagers {
+    function _claimRewards() internal {
         if (pendingSTGRewards() > 0) {
             _stakeLP(0);
         }
+    }
 
+    function _sellRewards() internal {
         //check STG
         uint256 _looseSTG = balanceOfSTG();
         if (_looseSTG != 0) {
@@ -498,5 +489,10 @@ contract Strategy is BaseStrategy {
                 _sellRewardsUniv3();
             }
         }
+    }
+
+    function claimAndSellRewards() external onlyVaultManagers {
+        _claimRewards();
+        _sellRewards();
     }
 }
