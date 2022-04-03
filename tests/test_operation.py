@@ -272,6 +272,9 @@ def test_profitable_small_harvest(
     RELATIVE_APPROX,
     stg_token,
     stg_whale,
+    token_LP_whale,
+    token_lp,
+    token_whale
 ):
     # Deposit to the vault
     amount = 5_000e6
@@ -287,7 +290,8 @@ def test_profitable_small_harvest(
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     chain.sleep(3600 * 24 * 3)
-    token.transfer(strategy, 3e6, {"from": user}) #simulate lp profit
+    token_lp.transfer(strategy, 1e6, {"from": token_LP_whale}) #simulate lp profit
+    token.transfer(strategy, 1e6, {"from": token_whale}) #simulate lp profit
 
     tx = strategy.harvest()
     print(tx.events['Harvested'])
