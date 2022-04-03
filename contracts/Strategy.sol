@@ -469,4 +469,20 @@ contract Strategy is BaseStrategy {
     function setUseCurve(bool _useCurve) external onlyVaultManagers {
         useCurve = _useCurve;
     }
+
+    function claimRewardToWant() external onlyVaultManagers {
+        if (pendingSTGRewards() > 0) {
+            _stakeLP(0);
+        }
+        
+        //check STG
+        uint256 _looseSTG = balanceOfSTG();
+        if (_looseSTG != 0) {
+            if (useCurve) {
+                _sellRewardsCurve();
+            } else {
+                _sellRewardsUniv3();
+            }
+        }
+    }
 }
