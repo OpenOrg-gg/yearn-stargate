@@ -272,11 +272,12 @@ contract Strategy is BaseStrategy {
             if (_amountToDeposit > 0) {
                 _addToLP(_amountToDeposit);
             }
-            uint256 unstakedBalance = balanceOfUnstakedLPToken();
-            if (unstakedBalance > 0) {
-                //redeposit to farm
-                _stakeLP(unstakedBalance);
-            }
+        }
+        // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
+        uint256 unstakedBalance = balanceOfUnstakedLPToken();
+        if (unstakedBalance > 0) {
+            //redeposit to farm
+            _stakeLP(unstakedBalance);
         }
     }
 
@@ -299,7 +300,7 @@ contract Strategy is BaseStrategy {
             uint256 _unstakedWant = _postWithdrawWant.sub(_preWithdrawWant);
             //redeposit to pool
             if (_unstakedWant > _amountNeeded) {
-                _addToLP(_postWithdrawWant.sub(_amountNeeded));
+                _addToLP(_unstakedWant.sub(_amountNeeded));
 
                 unstakedBalance = balanceOfUnstakedLPToken();
                 if (unstakedBalance > 0) {

@@ -68,7 +68,7 @@ def stg_token():
 
 @pytest.fixture
 def stg_whale(accounts):
-    yield accounts.at("0xea4d6015c775af28e2dff8d23a2959542a326c9d", force=True)
+    yield accounts.at("0x32e46cab87109ee6ede7d03d263c47be987238b9", force=True)
 
 
 @pytest.fixture

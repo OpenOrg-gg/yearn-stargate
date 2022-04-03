@@ -96,7 +96,47 @@ def test_profitable_harvest(
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault
 
-    assert token.balanceOf(strategy) + profit > amount
+    assert strategy.estimatedTotalAssets() + profit > amount
+    assert vault.pricePerShare() > before_pps
+    assert stg_token.balanceOf(strategy) == 0
+
+def test_profitable_harvest_curve(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    stg_token,
+    stg_whale,
+    gov
+):
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+    strategy.setUseCurve(True, {"from":gov})
+
+
+    # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
+    tx = strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    stg_token.transfer(strategy, 1_000e18, {"from": stg_whale})
+
+    before_pps = vault.pricePerShare()
+    # Harvest 2: Realize profit
+    chain.sleep(1)
+    tx = strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+    profit = token.balanceOf(vault.address)  # Profits go to vault
+
+    assert strategy.estimatedTotalAssets() + profit > amount
     assert vault.pricePerShare() > before_pps
     assert stg_token.balanceOf(strategy) == 0
 
@@ -220,3 +260,42 @@ def test_losses(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX)
         == user_balance_before - amount
     )
+
+def test_profitable_small_harvest(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    RELATIVE_APPROX,
+    stg_token,
+    stg_whale,
+):
+    # Deposit to the vault
+    amount = 5_000e6
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # Harvest 1: Send funds through the strategy
+    chain.sleep(1)
+    tx = strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    before_pps = vault.pricePerShare()
+    # Harvest 2: Realize profit
+    chain.sleep(3600 * 24 * 3)
+    token.transfer(strategy, 3e6, {"from": user}) #simulate lp profit
+
+    tx = strategy.harvest()
+    print(tx.events['Harvested'])
+
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+    profit = token.balanceOf(vault.address)  # Profits go to vault
+
+    assert strategy.estimatedTotalAssets() + profit > amount
+    assert vault.pricePerShare() >= before_pps
+    assert stg_token.balanceOf(strategy) == 0
