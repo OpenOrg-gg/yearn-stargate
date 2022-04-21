@@ -6,7 +6,7 @@ pragma experimental ABIEncoderV2;
 // These are the core Yearn libraries
 import {BaseStrategy, StrategyParams} from "@yearnvaults/contracts/BaseStrategy.sol";
 import "@openzeppelin/contracts/math/Math.sol";
-import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
@@ -15,9 +15,7 @@ import "../interfaces/Uniswap/IUniV3.sol";
 import "../interfaces/Curve/ICurve.sol";
 
 contract Strategy is BaseStrategy {
-    using SafeERC20 for IERC20;
     using Address for address;
-    using SafeMath for uint256;
 
     IERC20 internal constant weth =
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
