@@ -100,6 +100,7 @@ def test_profitable_harvest(
     assert vault.pricePerShare() > before_pps
     assert stg_token.balanceOf(strategy) == 0
 
+
 def test_profitable_harvest_curve(
     chain,
     accounts,
@@ -112,14 +113,13 @@ def test_profitable_harvest_curve(
     RELATIVE_APPROX,
     stg_token,
     stg_whale,
-    gov
+    gov,
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
-    strategy.setUseCurve(True, {"from":gov})
-
+    strategy.setUseCurve(True, {"from": gov})
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
@@ -261,6 +261,7 @@ def test_losses(
         == user_balance_before - amount
     )
 
+
 def test_profitable_small_harvest(
     chain,
     accounts,
@@ -274,7 +275,7 @@ def test_profitable_small_harvest(
     stg_whale,
     token_LP_whale,
     token_lp,
-    token_whale
+    token_whale,
 ):
     # Deposit to the vault
     amount = 5_000e6
@@ -290,11 +291,11 @@ def test_profitable_small_harvest(
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     chain.sleep(3600 * 24 * 3)
-    token_lp.transfer(strategy, 1e6, {"from": token_LP_whale}) #simulate lp profit
-    token.transfer(strategy, 1e6, {"from": token_whale}) #simulate lp profit
+    token_lp.transfer(strategy, 1e6, {"from": token_LP_whale})  # simulate lp profit
+    token.transfer(strategy, 1e6, {"from": token_whale})  # simulate lp profit
 
     tx = strategy.harvest()
-    print(tx.events['Harvested'])
+    print(tx.events["Harvested"])
 
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)

@@ -59,10 +59,12 @@ def token_whale(accounts):
 def token2_whale(accounts):
     yield accounts.at("0xd6216fc19db775df9774a6e33526131da7d19a2c", force=True)
 
+
 @pytest.fixture
 def token_lp():
     address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"
     yield Contract(address)
+
 
 @pytest.fixture
 def stg_token():
@@ -129,9 +131,11 @@ def liquidity_pool_id_in_lp_staking():
 def SGT_whale(accounts):
     yield accounts.at("0x485544e6fbef56d5bff61632b519ba0debdf28c1", force=True)
 
+
 @pytest.fixture
 def token_LP_whale(accounts):
     yield accounts.at("0xf8fd11594574f6aeb3193e779b7b1cf5ef6432f4", force=True)
+
 
 @pytest.fixture
 def amount(accounts, token, user):
@@ -204,7 +208,7 @@ def strategy(
         curvePool,
         "StrategyStargateUSDC",
     )
-    strategy.setKeeper(keeper, {"from":gov})
+    strategy.setKeeper(keeper, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
