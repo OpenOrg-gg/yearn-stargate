@@ -204,8 +204,6 @@ def strategy(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        univ3_swapper,
-        curvePool,
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper, {"from": gov})

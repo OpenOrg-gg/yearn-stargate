@@ -17,8 +17,7 @@ import {
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-import "../interfaces/Uniswap/IUniV3.sol";
-import "../interfaces/Curve/ICurve.sol";
+import "./ySwaps/ITradeFactory.sol";
 
 contract Strategy is BaseStrategy {
     using Address for address;
@@ -27,16 +26,9 @@ contract Strategy is BaseStrategy {
         IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     uint256 private constant max = type(uint256).max;
-    uint256 private constant basis = 10000;
     bool internal isOriginal = true;
 
-    // Pool fee must be moved to initialize for cloning
-    uint24 public poolFee;
-    uint256 public maxSlippage;
-
-    IUniV3 public uniV3Swapper;
-    ICurve public curvePool;
-    bool internal useCurve;
+    address public tradeFactory = address(0);
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -53,17 +45,9 @@ contract Strategy is BaseStrategy {
         address _vault,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _uniV3Swapper,
-        address _curvePool,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        _initializeThis(
-            _lpStaker,
-            _liquidityPoolIDInLPStaking,
-            _uniV3Swapper,
-            _curvePool,
-            _strategyName
-        );
+        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _strategyName);
     }
 
     function initialize(
@@ -73,8 +57,6 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _uniV3Swapper,
-        address _curvePool,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -84,20 +66,12 @@ contract Strategy is BaseStrategy {
         _initialize(_vault, _strategist, _rewards, _keeper);
 
         // Initialize cloned instance
-        _initializeThis(
-            _lpStaker,
-            _liquidityPoolIDInLPStaking,
-            _uniV3Swapper,
-            _curvePool,
-            _strategyName
-        );
+        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _strategyName);
     }
 
     function _initializeThis(
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _uniV3Swapper,
-        address _curvePool,
         string memory _strategyName
     ) internal {
         lpStaker = ILPStaking(_lpStaker);
@@ -114,15 +88,7 @@ contract Strategy is BaseStrategy {
 
         require(address(want) == liquidityPool.token());
 
-        poolFee = 3000; // univ3 pool fee to 0.3%.
-        maxSlippage = 200; // curve max slippage 2%.
-
         strategyName = _strategyName;
-        uniV3Swapper = IUniV3(_uniV3Swapper);
-        curvePool = ICurve(_curvePool);
-
-        require(address(uniV3Swapper) != address(0), "Univ3 Pool must be set");
-        require(address(curvePool) != address(0), "Curve Pool must be set");
     }
 
     event Cloned(address indexed clone);
@@ -134,8 +100,6 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _uniV3Swapper,
-        address _curvePool,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -164,8 +128,6 @@ contract Strategy is BaseStrategy {
             _keeper,
             _lpStaker,
             _liquidityPoolIDInLPStaking,
-            _uniV3Swapper,
-            _curvePool,
             _strategyName
         );
 
@@ -195,7 +157,6 @@ contract Strategy is BaseStrategy {
         )
     {
         _claimRewards();
-        _sellRewards();
 
         //grab the estimate total debt from the vault
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
@@ -227,33 +188,6 @@ contract Strategy is BaseStrategy {
             _profit = _profit.sub(_loss);
             _loss = 0;
         }
-    }
-
-    function _sellRewardsUniv3() internal {
-        uint256 availableSTG = balanceOfSTG();
-        _checkAllowance(address(uniV3Swapper), address(STG), availableSTG);
-
-        IUniV3.ExactInputParams memory params =
-            IUniV3.ExactInputParams({
-                path: abi.encodePacked(address(STG), poolFee, address(want)),
-                recipient: address(this),
-                deadline: block.timestamp,
-                amountIn: availableSTG,
-                amountOutMinimum: 0
-            });
-
-        uniV3Swapper.exactInput(params);
-    }
-
-    function _sellRewardsCurve() internal {
-        uint256 availableSTG = balanceOfSTG();
-        _checkAllowance(address(curvePool), address(STG), availableSTG);
-        uint256 expected =
-            curvePool
-                .get_dy(0, 1, availableSTG)
-                .mul(basis.sub(maxSlippage))
-                .div(basis);
-        curvePool.exchange(0, 1, availableSTG, expected);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -464,39 +398,36 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function setPoolFee(uint24 _poolFee) external onlyVaultManagers {
-        poolFee = _poolFee;
-    }
-
-    function setMaxSlippage(uint256 _maxSlippage) external onlyVaultManagers {
-        require(_maxSlippage <= basis);
-        maxSlippage = _maxSlippage;
-    }
-
-    function setUseCurve(bool _useCurve) external onlyVaultManagers {
-        useCurve = _useCurve;
-    }
-
     function _claimRewards() internal {
         if (pendingSTGRewards() > 0) {
             _stakeLP(0);
         }
     }
 
-    function _sellRewards() internal {
-        //check STG
-        uint256 _looseSTG = balanceOfSTG();
-        if (_looseSTG != 0) {
-            if (useCurve) {
-                _sellRewardsCurve();
-            } else {
-                _sellRewardsUniv3();
-            }
-        }
+    function claimRewards() external onlyVaultManagers {
+        _claimRewards();
     }
 
-    function claimAndSellRewards() external onlyVaultManagers {
-        _claimRewards();
-        _sellRewards();
+    // ----------------- YSWAPS FUNCTIONS ---------------------
+
+    function setTradeFactory(address _tradeFactory) external onlyGovernance {
+        if (tradeFactory != address(0)) {
+            _removeTradeFactoryPermissions();
+        }
+
+        // approve and set up trade factory
+        STG.safeApprove(_tradeFactory, max);
+        ITradeFactory tf = ITradeFactory(_tradeFactory);
+        tf.enable(address(STG), address(want));
+        tradeFactory = _tradeFactory;
+    }
+
+    function removeTradeFactoryPermissions() external onlyEmergencyAuthorized {
+        _removeTradeFactoryPermissions();
+    }
+
+    function _removeTradeFactoryPermissions() internal {
+        STG.safeApprove(tradeFactory, 0);
+        tradeFactory = address(0);
     }
 }
