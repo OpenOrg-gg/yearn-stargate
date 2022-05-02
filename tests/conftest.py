@@ -39,8 +39,12 @@ def keeper(accounts):
 
 
 @pytest.fixture
-def token():
-    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # this should be the address of the ERC-20 used by the strategy/vault (USDC)
+def token(usdc):
+    yield usdc
+
+@pytest.fixture
+def usdc():
+    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     yield Contract(token_address)
 
 
@@ -95,7 +99,7 @@ def trade_factory():
 
 
 @pytest.fixture
-def curvePool():
+def curve_pool():
     yield Contract("0x3211C6cBeF1429da3D0d58494938299C92Ad5860")
 
 
@@ -152,6 +156,14 @@ def univ3_swapper():
     address = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
     yield Contract(address)
 
+@pytest.fixture
+def univ2_router():
+    address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+    yield Contract(address)
+
+@pytest.fixture
+def ymechs_safe():
+    yield Contract("0x2C01B4AD51a67E2d8F02208F54dF9aC4c0B778B6")
 
 @pytest.fixture
 def weth():
@@ -196,8 +208,8 @@ def strategy(
     lp_staker,
     liquidity_pool_id_in_lp_staking,
     weth,
-    univ3_swapper,
-    curvePool,
+    trade_factory,
+    ymechs_safe,
 ):
     strategy = strategist.deploy(
         Strategy,
@@ -208,6 +220,13 @@ def strategy(
     )
     strategy.setKeeper(keeper, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    trade_factory.grantRole(
+            trade_factory.STRATEGY(),
+            strategy.address,
+            {"from": ymechs_safe, "gas_price": "0 gwei"},
+        )
+    strategy.setTradeFactory(trade_factory.address, {"from": gov})
+
     yield strategy
 
 
