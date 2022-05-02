@@ -147,4 +147,3 @@ def test_losses(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX)
         == user_balance_before - amount
     )
-

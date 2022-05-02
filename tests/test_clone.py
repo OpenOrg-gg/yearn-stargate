@@ -96,4 +96,6 @@ def test_clone(
     chain.mine(1)
     cloned_strategy.harvest({"from": gov})
 
-    assert vault.strategies(cloned_strategy).dict()["totalLoss"] < 10 # might be a loss from rounding
+    assert (
+        vault.strategies(cloned_strategy).dict()["totalLoss"] < 10
+    )  # might be a loss from rounding

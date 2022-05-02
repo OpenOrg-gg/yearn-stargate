@@ -6,6 +6,7 @@ from eth_abi.packed import encode_abi_packed
 import pytest
 import eth_utils
 
+
 def test_profitable_harvest_curve(
     chain,
     accounts,
@@ -25,13 +26,12 @@ def test_profitable_harvest_curve(
     weth,
     ymechs_safe,
     trade_factory,
-    gov
+    gov,
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
-
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
@@ -80,7 +80,7 @@ def test_profitable_harvest_curve(
         t = createTx(univ2_router, calldata)
         a = a + t[0]
         b = b + t[1]
-        
+
         expected_out = univ2_router.getAmountsOut(amount_in, path)[2]
 
     calldata = token_out.transfer.encode_input(receiver, expected_out)
@@ -116,12 +116,12 @@ def test_profitable_harvest_curve(
 
     assert strategy.estimatedTotalAssets() + profit > amount
     assert vault.pricePerShare() > before_pps
-    assert stg_token.balanceOf(strategy) < 1e18 # dust is OK
+    assert stg_token.balanceOf(strategy) < 1e18  # dust is OK
+
 
 def createTx(to, data):
     inBytes = eth_utils.to_bytes(hexstr=data)
     return [["address", "uint256", "bytes"], [to.address, len(inBytes), inBytes]]
-
 
 
 def test_remove_trade_factory(strategy, gov, trade_factory, stg_token):
@@ -132,6 +132,3 @@ def test_remove_trade_factory(strategy, gov, trade_factory, stg_token):
 
     assert strategy.tradeFactory() != trade_factory.address
     assert stg_token.allowance(strategy.address, trade_factory.address) == 0
-
-
-
