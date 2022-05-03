@@ -39,8 +39,13 @@ def keeper(accounts):
 
 
 @pytest.fixture
-def token():
-    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # this should be the address of the ERC-20 used by the strategy/vault (USDC)
+def token(usdc):
+    yield usdc
+
+
+@pytest.fixture
+def usdc():
+    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     yield Contract(token_address)
 
 
@@ -59,10 +64,12 @@ def token_whale(accounts):
 def token2_whale(accounts):
     yield accounts.at("0xd6216fc19db775df9774a6e33526131da7d19a2c", force=True)
 
+
 @pytest.fixture
 def token_lp():
     address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"
     yield Contract(address)
+
 
 @pytest.fixture
 def stg_token():
@@ -93,7 +100,7 @@ def trade_factory():
 
 
 @pytest.fixture
-def curvePool():
+def curve_pool():
     yield Contract("0x3211C6cBeF1429da3D0d58494938299C92Ad5860")
 
 
@@ -129,9 +136,11 @@ def liquidity_pool_id_in_lp_staking():
 def SGT_whale(accounts):
     yield accounts.at("0x485544e6fbef56d5bff61632b519ba0debdf28c1", force=True)
 
+
 @pytest.fixture
 def token_LP_whale(accounts):
     yield accounts.at("0xf8fd11594574f6aeb3193e779b7b1cf5ef6432f4", force=True)
+
 
 @pytest.fixture
 def amount(accounts, token, user):
@@ -147,6 +156,17 @@ def amount(accounts, token, user):
 def univ3_swapper():
     address = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
     yield Contract(address)
+
+
+@pytest.fixture
+def univ2_router():
+    address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+    yield Contract(address)
+
+
+@pytest.fixture
+def ymechs_safe():
+    yield Contract("0x2C01B4AD51a67E2d8F02208F54dF9aC4c0B778B6")
 
 
 @pytest.fixture
@@ -192,20 +212,25 @@ def strategy(
     lp_staker,
     liquidity_pool_id_in_lp_staking,
     weth,
-    univ3_swapper,
-    curvePool,
+    trade_factory,
+    ymechs_safe,
 ):
     strategy = strategist.deploy(
         Strategy,
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        univ3_swapper,
-        curvePool,
         "StrategyStargateUSDC",
     )
-    strategy.setKeeper(keeper, {"from":gov})
+    strategy.setKeeper(keeper, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    trade_factory.grantRole(
+        trade_factory.STRATEGY(),
+        strategy.address,
+        {"from": ymechs_safe, "gas_price": "0 gwei"},
+    )
+    strategy.setTradeFactory(trade_factory.address, {"from": gov})
+
     yield strategy
 
 
