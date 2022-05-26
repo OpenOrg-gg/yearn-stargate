@@ -172,7 +172,11 @@ contract Strategy is BaseStrategy {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
             );
-            require(leaveLPBehind || _loss == 0 || (_loss > 0 && balanceOfAllLPToken() == 0)); //dev: trying to withdraw from the position and there is not enough liquidity on the pool
+            require(
+                leaveLPBehind ||
+                    _loss == 0 ||
+                    (_loss > 0 && balanceOfAllLPToken() == 0)
+            ); //dev: trying to withdraw from the position and there is not enough liquidity on the pool
         }
 
         _totalAssets = estimatedTotalAssets();
