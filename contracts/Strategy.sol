@@ -22,9 +22,6 @@ import "./ySwaps/ITradeFactory.sol";
 contract Strategy is BaseStrategy {
     using Address for address;
 
-    IERC20 internal constant weth =
-        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-
     uint256 private constant max = type(uint256).max;
     bool internal isOriginal = true;
 
@@ -38,6 +35,7 @@ contract Strategy is BaseStrategy {
     IERC20 public lpToken;
     IStargateRouter public stargateRouter;
     ILPStaking public lpStaker;
+    bool public leaveLPBehind;
 
     string internal strategyName;
 
@@ -89,6 +87,7 @@ contract Strategy is BaseStrategy {
         require(address(want) == liquidityPool.token());
 
         strategyName = _strategyName;
+        leaveLPBehind = false;
     }
 
     event Cloned(address indexed clone);
@@ -173,6 +172,7 @@ contract Strategy is BaseStrategy {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
             );
+            require(leaveLPBehind || _loss == 0 || (_loss > 0 && balanceOfAllLPToken() == 0)); //dev: trying to withdraw from the position and there is not enough liquidity on the pool
         }
 
         _totalAssets = estimatedTotalAssets();
@@ -196,9 +196,7 @@ contract Strategy is BaseStrategy {
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
 
-            if (_amountToDeposit > 0) {
-                _addToLP(_amountToDeposit);
-            }
+            _addToLP(_amountToDeposit);
         }
         // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
         uint256 unstakedBalance = balanceOfUnstakedLPToken();
@@ -254,16 +252,12 @@ contract Strategy is BaseStrategy {
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
-            (, _loss) = withdrawSome(_amountNeeded.sub(_liquidAssets));
+            withdrawSome(_amountNeeded.sub(_liquidAssets));
             _liquidAssets = balanceOfWant();
+            _loss = _amountNeeded.sub(_liquidAssets);
         }
 
-        if (_amountNeeded > _liquidAssets) {
-            _liquidatedAmount = _liquidAssets;
-            _loss = _amountNeeded.sub(_liquidAssets);
-        } else {
-            _liquidatedAmount = _amountNeeded;
-        }
+        _liquidatedAmount = Math.min(_amountNeeded, _liquidAssets);
         require(_amountNeeded == _liquidatedAmount.add(_loss), "!check");
     }
 
@@ -406,6 +400,10 @@ contract Strategy is BaseStrategy {
 
     function claimRewards() external onlyVaultManagers {
         _claimRewards();
+    }
+
+    function setLeaveLPBehind(bool _leaveLPBehind) external onlyVaultManagers {
+        leaveLPBehind = _leaveLPBehind;
     }
 
     // ----------------- YSWAPS FUNCTIONS ---------------------

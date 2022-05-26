@@ -147,3 +147,45 @@ def test_losses(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX)
         == user_balance_before - amount
     )
+
+def test_revert_on_illiquid_pool(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    lp_staker,
+    stargate_token_pool,
+    keeper,
+    gov
+):
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest()
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # Simulate HACK: remove full liquidity
+    token.transfer(gov, token.balanceOf(stargate_token_pool), {"from":stargate_token_pool})
+
+    chain.mine(1)
+    vault.updateStrategyDebtRatio(strategy, 0, {"from":gov})
+    # tend()
+    strategy.setLeaveLPBehind(False, {"from":gov})
+    with reverts:
+        tx = strategy.harvest()
+
+    chain.mine(1)
+    strategy.setLeaveLPBehind(True, {"from":gov})
+    tx = strategy.harvest()
+    assert tx.events["StrategyReported"]["loss"] > 0
+    assert strategy.estimatedTotalAssets() > 0
