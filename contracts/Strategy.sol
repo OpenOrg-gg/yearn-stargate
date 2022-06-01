@@ -22,9 +22,6 @@ import "./ySwaps/ITradeFactory.sol";
 contract Strategy is BaseStrategy {
     using Address for address;
 
-    IERC20 internal constant weth =
-        IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-
     uint256 private constant max = type(uint256).max;
     bool internal isOriginal = true;
 
@@ -173,9 +170,11 @@ contract Strategy is BaseStrategy {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
             );
+            _totalAssets = estimatedTotalAssets();
+        } else {
+            _amountFreed = balanceOfWant();
         }
 
-        _totalAssets = estimatedTotalAssets();
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
         _loss = _loss.add(
             _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
@@ -195,10 +194,7 @@ contract Strategy is BaseStrategy {
 
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
-
-            if (_amountToDeposit > 0) {
                 _addToLP(_amountToDeposit);
-            }
         }
         // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
         uint256 unstakedBalance = balanceOfUnstakedLPToken();
@@ -254,16 +250,12 @@ contract Strategy is BaseStrategy {
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
-            (, _loss) = withdrawSome(_amountNeeded.sub(_liquidAssets));
+            withdrawSome(_amountNeeded.sub(_liquidAssets));
             _liquidAssets = balanceOfWant();
+            _loss = _amountNeeded.sub(_liquidAssets);
         }
 
-        if (_amountNeeded > _liquidAssets) {
-            _liquidatedAmount = _liquidAssets;
-            _loss = _amountNeeded.sub(_liquidAssets);
-        } else {
-            _liquidatedAmount = _amountNeeded;
-        }
+        _liquidatedAmount = Math.min(_amountNeeded, _liquidAssets);
         require(_amountNeeded == _liquidatedAmount.add(_loss), "!check");
     }
 
@@ -278,7 +270,6 @@ contract Strategy is BaseStrategy {
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
-
     function prepareMigration(address _newStrategy) internal override {
         _emergencyUnstakeLP();
         lpToken.safeTransfer(_newStrategy, balanceOfUnstakedLPToken());
@@ -337,6 +328,12 @@ contract Strategy is BaseStrategy {
         stargateRouter.addLiquidity(liquidityPoolID, _amount, address(this));
     }
 
+    function withdrawFromLP(uint256 lpAmount) external onlyVaultManagers {
+        if (lpAmount > 0 && balanceOfUnstakedLPToken() > 0) {
+            _withdrawFromLP(lpAmount);
+        }
+    }
+
     function _withdrawFromLP(uint256 _lpAmount) internal {
         _lpAmount = Math.min(balanceOfUnstakedLPToken(), _lpAmount); // we don't want to withdraw more than we have
         stargateRouter.instantRedeemLocal(
@@ -350,7 +347,14 @@ contract Strategy is BaseStrategy {
         lpStaker.deposit(liquidityPoolIDInLPStaking, _amountToStake);
     }
 
+    function unstakeLP(uint256 amountToUnstake) external onlyVaultManagers {
+        if (amountToUnstake > 0 && balanceOfStakedLPToken() > 0) {
+            _unstakeLP(amountToUnstake);
+        }
+    }
+
     function _unstakeLP(uint256 _amountToUnstake) internal {
+        _amountToUnstake = Math.min(_amountToUnstake, balanceOfStakedLPToken());
         lpStaker.withdraw(liquidityPoolIDInLPStaking, _amountToUnstake);
     }
 
