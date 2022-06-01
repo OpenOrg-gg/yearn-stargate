@@ -195,7 +195,9 @@ contract Strategy is BaseStrategy {
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
 
-            _addToLP(_amountToDeposit);
+            if(_amountToDeposit > 0){
+                _addToLP(_amountToDeposit);
+            }
         }
         // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
         uint256 unstakedBalance = balanceOfUnstakedLPToken();
@@ -350,11 +352,12 @@ contract Strategy is BaseStrategy {
 
     function unstakeLP(uint256 amountToUnstake) external onlyVaultManagers {
         if (amountToUnstake > 0 && balanceOfStakedLPToken() > 0) {
-            _unstakeLP(Math.min(amountToUnstake, balanceOfStakedLPToken()));
+            _unstakeLP(amountToUnstake);
         }
     }
 
     function _unstakeLP(uint256 _amountToUnstake) internal {
+        _amountToUnstake = Math.min(_amountToUnstake, balanceOfStakedLPToken());
         lpStaker.withdraw(liquidityPoolIDInLPStaking, _amountToUnstake);
     }
 
