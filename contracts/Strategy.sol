@@ -194,10 +194,7 @@ contract Strategy is BaseStrategy {
 
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
-
-            if(_amountToDeposit > 0){
                 _addToLP(_amountToDeposit);
-            }
         }
         // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
         uint256 unstakedBalance = balanceOfUnstakedLPToken();
