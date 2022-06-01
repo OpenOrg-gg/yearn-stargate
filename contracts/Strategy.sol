@@ -35,7 +35,6 @@ contract Strategy is BaseStrategy {
     IERC20 public lpToken;
     IStargateRouter public stargateRouter;
     ILPStaking public lpStaker;
-    bool public leaveLPBehind;
 
     string internal strategyName;
 
@@ -87,7 +86,6 @@ contract Strategy is BaseStrategy {
         require(address(want) == liquidityPool.token());
 
         strategyName = _strategyName;
-        leaveLPBehind = false;
     }
 
     event Cloned(address indexed clone);
@@ -172,14 +170,11 @@ contract Strategy is BaseStrategy {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
             );
-            require(
-                leaveLPBehind ||
-                    _loss == 0 ||
-                    (_loss > 0 && balanceOfAllLPToken() == 0)
-            ); //dev: trying to withdraw from the position and there is not enough liquidity on the pool
+            _totalAssets = estimatedTotalAssets();
+        } else {
+            _amountFreed = balanceOfWant();
         }
 
-        _totalAssets = estimatedTotalAssets();
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
         _loss = _loss.add(
             _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
@@ -276,7 +271,6 @@ contract Strategy is BaseStrategy {
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
-
     function prepareMigration(address _newStrategy) internal override {
         _emergencyUnstakeLP();
         lpToken.safeTransfer(_newStrategy, balanceOfUnstakedLPToken());
@@ -335,6 +329,12 @@ contract Strategy is BaseStrategy {
         stargateRouter.addLiquidity(liquidityPoolID, _amount, address(this));
     }
 
+    function withdrawFromLP(uint256 lpAmount) external onlyVaultManagers {
+        if (lpAmount > 0 && balanceOfUnstakedLPToken() > 0) {
+            _withdrawFromLP(lpAmount);
+        }
+    }
+
     function _withdrawFromLP(uint256 _lpAmount) internal {
         _lpAmount = Math.min(balanceOfUnstakedLPToken(), _lpAmount); // we don't want to withdraw more than we have
         stargateRouter.instantRedeemLocal(
@@ -346,6 +346,12 @@ contract Strategy is BaseStrategy {
 
     function _stakeLP(uint256 _amountToStake) internal {
         lpStaker.deposit(liquidityPoolIDInLPStaking, _amountToStake);
+    }
+
+    function unstakeLP(uint256 amountToUnstake) external onlyVaultManagers {
+        if (amountToUnstake > 0 && balanceOfStakedLPToken() > 0) {
+            _unstakeLP(Math.min(amountToUnstake, balanceOfStakedLPToken()));
+        }
     }
 
     function _unstakeLP(uint256 _amountToUnstake) internal {
@@ -404,10 +410,6 @@ contract Strategy is BaseStrategy {
 
     function claimRewards() external onlyVaultManagers {
         _claimRewards();
-    }
-
-    function setLeaveLPBehind(bool _leaveLPBehind) external onlyVaultManagers {
-        leaveLPBehind = _leaveLPBehind;
     }
 
     // ----------------- YSWAPS FUNCTIONS ---------------------
