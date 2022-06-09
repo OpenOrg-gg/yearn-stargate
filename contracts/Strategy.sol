@@ -14,9 +14,11 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+import "../interfaces/IDetailedERC20.sol";
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
+import "../interfaces/Chainlink/IPriceFeed.sol";
 import "./ySwaps/ITradeFactory.sol";
 
 contract Strategy is BaseStrategy {
@@ -38,13 +40,17 @@ contract Strategy is BaseStrategy {
 
     string internal strategyName;
 
+    IPriceFeed internal priceFeed;
+
+
     constructor(
         address _vault,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
+        address _priceFeed,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _strategyName);
+        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _priceFeed, _strategyName);
     }
 
     function initialize(
@@ -54,6 +60,7 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
+        address _priceFeed,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -63,12 +70,13 @@ contract Strategy is BaseStrategy {
         _initialize(_vault, _strategist, _rewards, _keeper);
 
         // Initialize cloned instance
-        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _strategyName);
+        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _priceFeed, _strategyName);
     }
 
     function _initializeThis(
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
+        address _priceFeed,
         string memory _strategyName
     ) internal {
         lpStaker = ILPStaking(_lpStaker);
@@ -83,9 +91,11 @@ contract Strategy is BaseStrategy {
 
         lpToken.safeApprove(address(lpStaker), max);
 
-        require(address(want) == liquidityPool.token());
-
+        priceFeed = IPriceFeed(_priceFeed);
         strategyName = _strategyName;
+
+        require(address(want) == liquidityPool.token());
+        require(address(priceFeed) != address(0));
     }
 
     event Cloned(address indexed clone);
@@ -97,6 +107,7 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
+        address _priceFeed,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -125,6 +136,7 @@ contract Strategy is BaseStrategy {
             _keeper,
             _lpStaker,
             _liquidityPoolIDInLPStaking,
+            _priceFeed,
             _strategyName
         );
 
@@ -316,7 +328,12 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256)
     {
-        return _amtInWei;
+        int256 price = priceFeed.latestAnswer();
+        if (price == 0) {
+            return _amtInWei;
+        }
+        require(price >= 0, "SafeCast: value must be positive");
+        return _amtInWei.div(uint256(price)).mul(IDetailedERC20(address(want)).decimals());
     }
 
     // --------- UTILITY & HELPER FUNCTIONS ------------

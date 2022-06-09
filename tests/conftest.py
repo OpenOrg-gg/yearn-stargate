@@ -176,6 +176,12 @@ def weth():
 
 
 @pytest.fixture
+def price_feed():
+    token_address = "0x986b5E1e1755e3C2440e960477f25201B0a8bbD4"
+    yield Contract(token_address)
+
+
+@pytest.fixture
 def weth_amout(user, weth):
     weth_amout = 10 ** weth.decimals()
     user.transfer(weth, weth_amout)
@@ -213,6 +219,7 @@ def strategy(
     liquidity_pool_id_in_lp_staking,
     weth,
     trade_factory,
+    price_feed,
     ymechs_safe,
 ):
     strategy = strategist.deploy(
@@ -220,6 +227,7 @@ def strategy(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
+        price_feed,
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper, {"from": gov})
