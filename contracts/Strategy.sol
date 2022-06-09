@@ -42,7 +42,6 @@ contract Strategy is BaseStrategy {
 
     IPriceFeed internal priceFeed;
 
-
     constructor(
         address _vault,
         address _lpStaker,
@@ -50,7 +49,12 @@ contract Strategy is BaseStrategy {
         address _priceFeed,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _priceFeed, _strategyName);
+        _initializeThis(
+            _lpStaker,
+            _liquidityPoolIDInLPStaking,
+            _priceFeed,
+            _strategyName
+        );
     }
 
     function initialize(
@@ -70,7 +74,12 @@ contract Strategy is BaseStrategy {
         _initialize(_vault, _strategist, _rewards, _keeper);
 
         // Initialize cloned instance
-        _initializeThis(_lpStaker, _liquidityPoolIDInLPStaking, _priceFeed, _strategyName);
+        _initializeThis(
+            _lpStaker,
+            _liquidityPoolIDInLPStaking,
+            _priceFeed,
+            _strategyName
+        );
     }
 
     function _initializeThis(
@@ -206,7 +215,7 @@ contract Strategy is BaseStrategy {
 
         if (_looseWant > _debtOutstanding) {
             uint256 _amountToDeposit = _looseWant.sub(_debtOutstanding);
-                _addToLP(_amountToDeposit);
+            _addToLP(_amountToDeposit);
         }
         // we will need to do this no matter the want situation. If there is any unstaked LP Token, let's stake it.
         uint256 unstakedBalance = balanceOfUnstakedLPToken();
@@ -333,7 +342,10 @@ contract Strategy is BaseStrategy {
             return _amtInWei;
         }
         require(price >= 0, "SafeCast: value must be positive");
-        return _amtInWei.div(uint256(price)).mul(IDetailedERC20(address(want)).decimals());
+        return
+            _amtInWei.div(uint256(price)).mul(
+                IDetailedERC20(address(want)).decimals()
+            );
     }
 
     // --------- UTILITY & HELPER FUNCTIONS ------------
