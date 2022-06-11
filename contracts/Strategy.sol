@@ -27,7 +27,7 @@ contract Strategy is BaseStrategy {
     uint256 private constant max = type(uint256).max;
     bool internal isOriginal = true;
 
-    address public tradeFactory = address(0);
+    address public tradeFactory;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -388,6 +388,10 @@ contract Strategy is BaseStrategy {
     }
 
     function _emergencyUnstakeLP() internal {
+        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+    }
+
+    function emergencyUnstakedLP() public onlyAuthorized {
         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
     }
 
