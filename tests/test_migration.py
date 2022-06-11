@@ -17,6 +17,7 @@ def test_migration(
     user,
     RELATIVE_APPROX,
     lp_staker,
+    price_feed,
     liquidity_pool_id_in_lp_staking,
 ):
     # Deposit to the vault and harvest
@@ -32,6 +33,7 @@ def test_migration(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
+        price_feed,
         "StrategyStargateUSDC",
     )
     previous_debt = vault.strategies(strategy).dict()["totalDebt"]
