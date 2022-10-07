@@ -15,6 +15,10 @@ import "../interfaces/Stargate/ILPStaking.sol";
 import "../interfaces/Chainlink/IPriceFeed.sol";
 import "./ySwaps/ITradeFactory.sol";
 
+interface IBaseFee {
+    function isCurrentBaseFeeAcceptable() external view returns (bool);
+}
+
 contract Strategy is BaseStrategy {
     using Address for address;
 
@@ -35,6 +39,9 @@ contract Strategy is BaseStrategy {
     string internal strategyName;
 
     IPriceFeed internal priceFeed;
+
+    uint256 public creditThreshold; // amount of credit in underlying tokens that will automatically trigger a harvest
+    bool internal forceHarvestTriggerOnce; // only set this to true when we want to trigger our keepers to harvest for us
 
     constructor(
         address _vault,
@@ -82,6 +89,12 @@ contract Strategy is BaseStrategy {
         address _priceFeed,
         string memory _strategyName
     ) internal {
+        // You can set these parameters on deployment to whatever you want
+        maxReportDelay = 100 days; // 100 days in seconds
+        minReportDelay = 30 days; // 30 days in seconds
+        creditThreshold = 1e6 * 1e18; ///Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
+        healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012; // health.ychad.eth
+
         lpStaker = ILPStaking(_lpStaker);
         STG = IERC20(lpStaker.stargate());
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
@@ -202,6 +215,9 @@ contract Strategy is BaseStrategy {
             _profit = _profit.sub(_loss);
             _loss = 0;
         }
+
+        // we're done harvesting, so reset our trigger if we used it
+        forceHarvestTriggerOnce = false;
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -290,6 +306,49 @@ contract Strategy is BaseStrategy {
         lpToken.safeTransfer(_newStrategy, balanceOfUnstakedLPToken());
     }
 
+    /* ========== KEEP3RS ========== */
+    // use this to determine when to harvest
+    function harvestTrigger(uint256 callCostinEth)
+        public
+        view
+        override
+        returns (bool)
+    {
+        // Should not trigger if strategy is not active (no assets and no debtRatio). This means we don't need to adjust keeper job.
+        if (!isActive()) {
+            return false;
+        }
+
+        StrategyParams memory params = vault.strategies(address(this));
+        // harvest no matter what once we reach our maxDelay
+        if (block.timestamp.sub(params.lastReport) > maxReportDelay) {
+            return true;
+        }
+
+        // check if the base fee gas price is higher than we allow. if it is, block harvests.
+        if (!isBaseFeeAcceptable()) {
+            return false;
+        }
+
+        // trigger if we want to manually harvest, but only if our gas price is acceptable
+        if (forceHarvestTriggerOnce) {
+            return true;
+        }
+
+        // harvest if we hit our minDelay, but only if our gas price is acceptable
+        if (block.timestamp.sub(params.lastReport) > minReportDelay) {
+            return true;
+        }
+
+        // harvest our credit if it's above our threshold
+        if (vault.creditAvailable() > creditThreshold) {
+            return true;
+        }
+
+        // otherwise, we don't harvest
+        return false;
+    }
+
     // Override this to add all tokens/tokenized positions this contract manages
     // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
     // NOTE: Do *not* include `want`, already included in `sweep` below
@@ -310,37 +369,13 @@ contract Strategy is BaseStrategy {
         returns (address[] memory)
     {}
 
-    /**
-     * @notice
-     *  Provide an accurate conversion from `_amtInWei` (denominated in wei)
-     *  to `want` (using the native decimal characteristics of `want`).
-     * @dev
-     *  Care must be taken when working with decimals to assure that the conversion
-     *  is compatible. As an example:
-     *
-     *      given 1e17 wei (0.1 ETH) as input, and want is USDC (6 decimals),
-     *      with USDC/ETH = 1800, this should give back 1800000000 (180 USDC)
-     *
-     * @param _amtInWei The amount (in wei/1e-18 ETH) to convert to `want`
-     * @return The amount in `want` of `_amtInEth` converted to `want`
-     **/
-    function ethToWant(uint256 _amtInWei)
+    // convert our keeper's eth cost into want, we don't need this anymore since we override the baseStrategy harvestTrigger
+    function ethToWant(uint256 _ethAmount)
         public
         view
-        virtual
         override
         returns (uint256)
-    {
-        int256 price = priceFeed.latestAnswer();
-        if (price == 0) {
-            return _amtInWei;
-        }
-        require(price >= 0, "SafeCast: value must be positive");
-        return
-            _amtInWei.div(uint256(price)).mul(
-                IDetailedERC20(address(want)).decimals()
-            );
-    }
+    {}
 
     // --------- UTILITY & HELPER FUNCTIONS ------------
 
@@ -437,6 +472,22 @@ contract Strategy is BaseStrategy {
 
     function claimRewards() external onlyVaultManagers {
         _claimRewards();
+    }
+
+    // check if the current baseFee is below our external target
+    function isBaseFeeAcceptable() internal view returns (bool) {
+        return IBaseFee(0xb5e1CAcB567d98faaDB60a1fD4820720141f064F).isCurrentBaseFeeAcceptable();
+    }
+
+    // This allows us to manually harvest with our keeper as needed
+    function setForceHarvestTriggerOnce(bool _forceHarvestTriggerOnce) external onlyVaultManagers {
+        forceHarvestTriggerOnce = _forceHarvestTriggerOnce;
+    }
+
+    ///@notice Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
+    function setCreditThreshold(uint256 _creditThreshold) external onlyVaultManagers
+    {
+        creditThreshold = _creditThreshold;
     }
 
     // ----------------- YSWAPS FUNCTIONS ---------------------
