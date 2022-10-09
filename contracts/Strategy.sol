@@ -8,11 +8,13 @@ import {BaseStrategy, StrategyParams} from "@yearnvaults/contracts/BaseStrategy.
 import "@openzeppelin/contracts/math/Math.sol";
 import {IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-import "../interfaces/IDetailedERC20.sol";
+import "../interfaces/IERC20Metadata.sol";
+import "../interfaces/IWETH.sol";
+import "../interfaces/ISGETH.sol";
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-import "../interfaces/Chainlink/IPriceFeed.sol";
+//import "../interfaces/Chainlink/IPriceFeed.sol";
 import "./ySwaps/ITradeFactory.sol";
 
 interface IBaseFee {
@@ -37,8 +39,8 @@ contract Strategy is BaseStrategy {
     ILPStaking public lpStaker;
 
     string internal strategyName;
-
-    IPriceFeed internal priceFeed;
+    bool public wantIsWETH;
+    //IPriceFeed internal priceFeed;
 
     uint256 public creditThreshold; // amount of credit in underlying tokens that will automatically trigger a harvest
     bool internal forceHarvestTriggerOnce; // only set this to true when we want to trigger our keepers to harvest for us
@@ -47,13 +49,15 @@ contract Strategy is BaseStrategy {
         address _vault,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _priceFeed,
+        bool _wantIsWETH,
+        //address _priceFeed,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
         _initializeThis(
             _lpStaker,
             _liquidityPoolIDInLPStaking,
-            _priceFeed,
+            _wantIsWETH,
+            //_priceFeed,
             _strategyName
         );
     }
@@ -65,7 +69,8 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _priceFeed,
+        bool _wantIsWETH,
+        //address _priceFeed,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -78,7 +83,8 @@ contract Strategy is BaseStrategy {
         _initializeThis(
             _lpStaker,
             _liquidityPoolIDInLPStaking,
-            _priceFeed,
+            _wantIsWETH,
+            //_priceFeed,
             _strategyName
         );
     }
@@ -86,14 +92,15 @@ contract Strategy is BaseStrategy {
     function _initializeThis(
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _priceFeed,
+        bool _wantIsWETH,
+        //address _priceFeed,
         string memory _strategyName
     ) internal {
         // You can set these parameters on deployment to whatever you want
         maxReportDelay = 100 days; // 100 days in seconds
         minReportDelay = 30 days; // 30 days in seconds
         creditThreshold = 1e6 * 1e18; ///Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
-        healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012; // health.ychad.eth
+        //healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012; // health.ychad.eth
 
         lpStaker = ILPStaking(_lpStaker);
         STG = IERC20(lpStaker.stargate());
@@ -107,11 +114,13 @@ contract Strategy is BaseStrategy {
 
         lpToken.safeApprove(address(lpStaker), max);
 
-        priceFeed = IPriceFeed(_priceFeed);
+        //priceFeed = IPriceFeed(_priceFeed);
+        //require(address(priceFeed) != address(0));
         strategyName = _strategyName;
-
-        require(address(want) == liquidityPool.token());
-        require(address(priceFeed) != address(0));
+        wantIsWETH = _wantIsWETH;
+        if (wantIsWETH == false){
+            require(address(want) == liquidityPool.token());
+        }
     }
 
     event Cloned(address indexed clone);
@@ -123,7 +132,8 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
-        address _priceFeed,
+        bool _wantIsWETH,
+        //address _priceFeed,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -152,7 +162,8 @@ contract Strategy is BaseStrategy {
             _keeper,
             _lpStaker,
             _liquidityPoolIDInLPStaking,
-            _priceFeed,
+            _wantIsWETH,
+            //_priceFeed,
             _strategyName
         );
 
@@ -182,18 +193,16 @@ contract Strategy is BaseStrategy {
         )
     {
         _claimRewards();
-
+        
         //grab the estimate total debt from the vault
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
-
         _profit = _totalAssets > _vaultDebt ? _totalAssets.sub(_vaultDebt) : 0;
 
         //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
         uint256 _amountFreed;
         uint256 _toLiquidate = _debtOutstanding.add(_profit);
         uint256 _wantBalance = balanceOfWant();
-
         if (_toLiquidate > _wantBalance) {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
@@ -202,7 +211,6 @@ contract Strategy is BaseStrategy {
         } else {
             _amountFreed = balanceOfWant();
         }
-
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
         _loss = _loss.add(
             _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
@@ -382,8 +390,30 @@ contract Strategy is BaseStrategy {
     function _addToLP(uint256 _amount) internal {
         // Nice! DRY principle
         _amount = Math.min(balanceOfWant(), _amount); // we don't want to add to LP more than we have
+        // Check if want token is WETH to unwrap from WETH to ETH to wrap to SGETH:
+        if (wantIsWETH == true){
+            _convertWETHtoSGETH(_amount);
+        } else { // want is not WETH:
         _checkAllowance(address(stargateRouter), address(want), _amount);
+        }
         stargateRouter.addLiquidity(liquidityPoolID, _amount, address(this));
+    }
+
+    // Strategy needs to have a payable fallback to receive the ETH from WETH contract in case the want of the Strategy is WETH, otherwise revert
+    receive() external payable {
+        require(wantIsWETH == true);
+    }
+
+    // conversion function needs to be payable to send ETH and thus needs to be public
+    function _convertWETHtoSGETH(uint256 _amount) public payable {
+            IWETH(address(want)).withdraw(_amount);
+            address SGETH = IERC20Metadata(address(lpToken)).token();
+            ISGETH(SGETH).deposit{value: _amount}();
+            _checkAllowance(address(stargateRouter), SGETH, _amount);
+    }
+
+    function _wrapETHtoWETH() public payable {
+        IWETH(address(want)).deposit{value: address(this).balance}();
     }
 
     function withdrawFromLP(uint256 lpAmount) external onlyVaultManagers {
@@ -394,11 +424,17 @@ contract Strategy is BaseStrategy {
 
     function _withdrawFromLP(uint256 _lpAmount) internal {
         _lpAmount = Math.min(balanceOfUnstakedLPToken(), _lpAmount); // we don't want to withdraw more than we have
+        // This will convert all lp tokens to ETH directly (skipping SGETH)
         stargateRouter.instantRedeemLocal(
             uint16(liquidityPoolID),
             _lpAmount,
             address(this)
         );
+        // Check if want token is WETH to unwrap from SGETH to ETH to wrap to want WETH:
+        if (wantIsWETH == true){ // We have now all ETH! --> Wrap to WETH:
+            _wrapETHtoWETH();
+        }
+
     }
 
     function _stakeLP(uint256 _amountToStake) internal {
@@ -488,6 +524,12 @@ contract Strategy is BaseStrategy {
     function setCreditThreshold(uint256 _creditThreshold) external onlyVaultManagers
     {
         creditThreshold = _creditThreshold;
+    }
+
+    ///@notice Change the wantIsWETH boolean in case of a faulty declaration in the constructor.
+    function setWantIsWETH(bool _wantIsWETH) external onlyVaultManagers
+    {
+        wantIsWETH = _wantIsWETH;
     }
 
     // ----------------- YSWAPS FUNCTIONS ---------------------

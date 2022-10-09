@@ -4,7 +4,7 @@ import pytest
 
 
 def test_operation(
-    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov
 ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
@@ -14,7 +14,7 @@ def test_operation(
 
     # harvest
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()
@@ -36,24 +36,24 @@ def test_change_debt(
     vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     half = int(amount / 2)
 
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # In order to pass this tests, you will need to implement prepareReturn.
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
-def test_sweep(gov, vault, strategy, token, user, amount, weth, weth_amout):
+def test_sweep(gov, vault, strategy, token, user, amount, weth):
     # Strategy want token doesn't work
     token.transfer(strategy, amount, {"from": user})
     assert token.address == strategy.want()
@@ -70,24 +70,15 @@ def test_sweep(gov, vault, strategy, token, user, amount, weth, weth_amout):
     # with brownie.reverts("!protected"):
     #     strategy.sweep(strategy.protectedToken(), {"from": gov})
 
-    before_balance = weth.balanceOf(gov)
-    weth.transfer(strategy, weth_amout, {"from": user})
-    assert weth.address != strategy.want()
-    assert weth.balanceOf(user) == 0
-    strategy.sweep(weth, {"from": gov})
-    assert weth.balanceOf(gov) == weth_amout + before_balance
-
-
 def test_triggers(
-    chain, gov, vault, strategy, token, amount, user, weth, weth_amout, strategist
+    chain, gov, vault, strategy, token, amount, user, weth, strategist
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     chain.sleep(1)
-    strategy.harvest()
-
+    strategy.harvest({"from": gov})
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)
 
@@ -105,6 +96,7 @@ def test_losses(
     lp_staker,
     stargate_token_pool,
     keeper,
+    gov
 ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
@@ -114,7 +106,7 @@ def test_losses(
 
     # harvest
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()
@@ -134,7 +126,7 @@ def test_losses(
     )
 
     chain.sleep(1)
-    tx = strategy.harvest()
+    tx = strategy.harvest({"from": gov})
 
     assert (
         pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX)

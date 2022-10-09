@@ -5,7 +5,7 @@ from brownie import Contract
 token_addresses = {
     "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
     "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT
-    "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH ! = 
+    "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH != 0x72E2F4830b9E45d52F80aC08CB2bEC0FeF72eD9c
 }
 
 token_id = {
@@ -22,6 +22,12 @@ token_prices = {
     "DAI": 1,
 }
 
+token_isWeth = {
+    "USDC": False,  # USDC
+    "USDT": False,  # USDT
+    "WETH": True,  # WETH 
+}
+
 whale_addresses = {
     "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
     "USDT": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
@@ -33,7 +39,7 @@ whale_addresses = {
     params=[
         "USDC",  # USDC
         "USDT",  # USDT
-#        "WETH",  # WETH
+        "WETH",  # WETH
     ],
     scope="session",
     autouse=True,
@@ -44,6 +50,10 @@ def token(request):
 @pytest.fixture
 def token_lp(token, lp_staker):
     yield Contract(lp_staker.poolInfo(token_id[token.symbol()])["lpToken"])
+
+@pytest.fixture
+def wantIsWeth(token):
+    yield token_isWeth[token.symbol()]
 
 @pytest.fixture
 def stargate_weth():
@@ -105,6 +115,11 @@ def usdc():
     yield Contract(token_address)
 
 @pytest.fixture
+def usdt():
+    token_address = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    yield Contract(token_address)
+
+@pytest.fixture
 def stg_token():
     token_address = "0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6"
     yield Contract(token_address)
@@ -121,6 +136,10 @@ def lp_staker():
     address = "0xB0D502E938ed5f4df2E681fE6E419ff29631d62b"
     yield Contract(address)
 
+@pytest.fixture
+def lp_staker_op():
+    address = "0x4DeA9e918c6289a52cd469cAC652727B7b412Cd2"
+    yield Contract(address)
 
 @pytest.fixture
 def stargate_router():
@@ -176,16 +195,6 @@ def token_LP_whale(accounts):
 
 
 @pytest.fixture
-def amount(accounts, token, user):
-    amount = 100_000 * 10 ** token.decimals()
-    # In order to get some funds for the token you are about to use,
-    # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x7abe0ce388281d2acf297cb089caef3819b13448", force=True)
-    token.transfer(user, amount, {"from": reserve})
-    yield amount
-
-
-@pytest.fixture
 def univ3_swapper():
     address = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
     yield Contract(address)
@@ -215,13 +224,6 @@ def price_feed():
 
 
 @pytest.fixture
-def weth_amout(user, weth):
-    weth_amout = 10 ** weth.decimals()
-    user.transfer(weth, weth_amout)
-    yield weth_amout
-
-
-@pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
@@ -241,15 +243,17 @@ def strategy(
     liquidity_pool_id_in_lp_staking,
     weth,
     trade_factory,
-    price_feed,
+    #price_feed,
     ymechs_safe,
+    wantIsWeth
 ):
     strategy = strategist.deploy(
         Strategy,
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        price_feed,
+        wantIsWeth,
+        #price_feed,
         "StrategyStargateUSDC",
     )
     strategy.setKeeper(keeper, {"from": gov})

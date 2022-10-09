@@ -19,12 +19,13 @@ def test_migration(
     lp_staker,
     price_feed,
     liquidity_pool_id_in_lp_staking,
+    wantIsWeth
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     chain.sleep(1)
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # migrate to a new strategy
@@ -33,7 +34,8 @@ def test_migration(
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        price_feed,
+        wantIsWeth,
+        #price_feed,
         "StrategyStargateUSDC",
     )
     previous_debt = vault.strategies(strategy).dict()["totalDebt"]
