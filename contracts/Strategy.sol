@@ -29,6 +29,8 @@ contract Strategy is BaseStrategy {
 
     address public tradeFactory;
 
+    address public baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F;
+
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
@@ -100,7 +102,6 @@ contract Strategy is BaseStrategy {
         maxReportDelay = 100 days; // 100 days in seconds
         minReportDelay = 30 days; // 30 days in seconds
         creditThreshold = 1e6 * 1e18; ///Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
-        //healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012; // health.ychad.eth
 
         lpStaker = ILPStaking(_lpStaker);
         STG = IERC20(lpStaker.stargate());
@@ -512,7 +513,7 @@ contract Strategy is BaseStrategy {
 
     // check if the current baseFee is below our external target
     function isBaseFeeAcceptable() internal view returns (bool) {
-        return IBaseFee(0xb5e1CAcB567d98faaDB60a1fD4820720141f064F).isCurrentBaseFeeAcceptable();
+        return IBaseFee(baseFeeOracle).isCurrentBaseFeeAcceptable();
     }
 
     // This allows us to manually harvest with our keeper as needed
@@ -530,6 +531,12 @@ contract Strategy is BaseStrategy {
     function setWantIsWETH(bool _wantIsWETH) external onlyVaultManagers
     {
         wantIsWETH = _wantIsWETH;
+    }
+
+    ///@notice Change the contract to call to determine if basefee is acceptable for automated harvesting.
+    function setBaseFee(address _baseFeeOracle) external onlyVaultManagers
+    {
+        baseFeeOracle = _baseFeeOracle;
     }
 
     // ----------------- YSWAPS FUNCTIONS ---------------------
