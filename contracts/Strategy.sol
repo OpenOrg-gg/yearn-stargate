@@ -33,7 +33,7 @@ contract Strategy is BaseStrategy {
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
 
-    IERC20 public STG;
+    IERC20 public reward;
     IPool public liquidityPool;
     IERC20 public lpToken;
     IStargateRouter public stargateRouter;
@@ -104,9 +104,9 @@ contract Strategy is BaseStrategy {
         
         emissionTokenIsSTG = _emissionTokenIsSTG;
         if (emissionTokenIsSTG == true){
-            STG = IERC20(lpStaker.stargate());
+            reward = IERC20(lpStaker.stargate());
         } else {
-            STG = IERC20(lpStaker.eToken());
+            reward = IERC20(lpStaker.eToken());
         }
         
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
@@ -177,7 +177,7 @@ contract Strategy is BaseStrategy {
         return balanceOfWant().add(valueOfLPTokens());
     }
 
-    function pendingSTGRewards() public view returns (uint256) {
+    function pendingRewards() public view returns (uint256) {
         if (emissionTokenIsSTG == true){
             return lpStaker.pendingStargate(liquidityPoolIDInLPStaking, address(this));
         } else {
@@ -408,6 +408,14 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    function convertWETHtoSGETH(uint256 _amount) external onlyVaultManagers {
+        _convertWETHtoSGETH(_amount);
+    }
+
+    function wrapETHtoWETH() external onlyVaultManagers {
+        _wrapETHtoWETH();
+    }
+
     function withdrawFromLP(uint256 lpAmount) external onlyVaultManagers {
         if (lpAmount > 0 && balanceOfUnstakedLPToken() > 0) {
             _withdrawFromLP(lpAmount);
@@ -474,8 +482,8 @@ contract Strategy is BaseStrategy {
             lpStaker.userInfo(liquidityPoolIDInLPStaking, address(this)).amount;
     }
 
-    function balanceOfSTG() public view returns (uint256) {
-        return STG.balanceOf(address(this));
+    function balanceOfReward() public view returns (uint256) {
+        return reward.balanceOf(address(this));
     }
 
     // _checkAllowance adapted from https://github.com/therealmonoloco/liquity-stability-pool-strategy/blob/1fb0b00d24e0f5621f1e57def98c26900d551089/contracts/Strategy.sol#L316
@@ -492,7 +500,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _claimRewards() internal {
-        if (pendingSTGRewards() > 0) {
+        if (pendingRewards() > 0) {
             _stakeLP(0);
         }
     }
@@ -531,9 +539,9 @@ contract Strategy is BaseStrategy {
         }
 
         // approve and set up trade factory
-        STG.safeApprove(_tradeFactory, max);
+        reward.safeApprove(_tradeFactory, max);
         ITradeFactory tf = ITradeFactory(_tradeFactory);
-        tf.enable(address(STG), address(want));
+        tf.enable(address(reward), address(want));
         tradeFactory = _tradeFactory;
     }
 
@@ -542,7 +550,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _removeTradeFactoryPermissions() internal {
-        STG.safeApprove(tradeFactory, 0);
+        reward.safeApprove(tradeFactory, 0);
         tradeFactory = address(0);
     }
 }
