@@ -139,3 +139,29 @@ def test_losses(
         pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX)
         == user_balance_before - amount
     )
+
+def test_limited_delta_credit_no_loss(
+    chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov, token_LP_whale,
+):
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    liquidityPool = Contract(strategy.liquidityPool())
+    router = Contract(liquidityPool.router())
+    router.instantRedeemLocal(liquidityPool.poolId(), liquidityPool.deltaCredit(), token_LP_whale, {"from":token_LP_whale})
+
+    assert liquidityPool.deltaCredit() < amount
+    vault.updateStrategyDebtRatio(strategy.address, 0, {"from": gov})
+    chain.sleep(1)
+    tx = strategy.harvest({"from": gov})
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    assert tx.events['StrategyReported']['loss'] < 10 #might have a small loss due to rounding error
+    assert pytest.approx(vault.debtOutstanding(strategy), rel=RELATIVE_APPROX) == amount
