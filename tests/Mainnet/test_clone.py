@@ -14,6 +14,8 @@ def test_double_init_should_revert(
     keeper,
     price_feed,
     rewards,
+    wantIsWeth,
+    emissionTokenIsSTG,
 ):
     clone_tx = strategy.clone(
         vault,
@@ -22,7 +24,9 @@ def test_double_init_should_revert(
         keeper,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        price_feed,
+        wantIsWeth,
+        emissionTokenIsSTG,
+        #price_feed,
         "ClonedStrategy",
         {"from": strategist},
     )
@@ -39,7 +43,9 @@ def test_double_init_should_revert(
             keeper,
             lp_staker,
             liquidity_pool_id_in_lp_staking,
-            price_feed,
+            wantIsWeth,
+            emissionTokenIsSTG,
+            #price_feed,
             "RevertedStrat",
             {"from": gov},
         )
@@ -52,7 +58,9 @@ def test_double_init_should_revert(
             keeper,
             lp_staker,
             liquidity_pool_id_in_lp_staking,
-            price_feed,
+            wantIsWeth,
+            emissionTokenIsSTG,
+            #price_feed,
             "ClonedRevertedStrat",
             {"from": gov},
         )
@@ -71,6 +79,8 @@ def test_clone(
     token_whale,
     price_feed,
     amount,
+    wantIsWeth,
+    emissionTokenIsSTG,
 ):
     clone_tx = strategy.clone(
         vault,
@@ -79,7 +89,9 @@ def test_clone(
         keeper,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        price_feed,
+        wantIsWeth,
+        emissionTokenIsSTG,
+        #price_feed,
         "ClonedStrategy",
         {"from": strategist},
     )

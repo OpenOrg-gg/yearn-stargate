@@ -27,6 +27,8 @@ def test_profitable_harvest_curve(
     ymechs_safe,
     trade_factory,
     gov,
+    wantIsWeth,
+    emissionTokenIsSTG,
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -35,7 +37,7 @@ def test_profitable_harvest_curve(
 
     # Harvest 1: Send funds through the strategy
     chain.sleep(1)
-    tx = strategy.harvest()
+    tx = strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     stg_token.transfer(strategy, 1_000e18, {"from": stg_whale})
@@ -68,20 +70,30 @@ def test_profitable_harvest_curve(
 
     if usdc != token_out:
         path = [usdc.address, weth.address, token_out.address]
+        if weth == token and wantIsWeth == True:
+            path = [usdc.address, token_out.address]
 
-        calldata = usdc.approve.encode_input(univ2_router, expected_out)
-        t = createTx(token_in, calldata)
+        calldata = usdc.approve.encode_input(univ2_router, 2 ** 256 - 1)
+        t = createTx(usdc, calldata)
         a = a + t[0]
         b = b + t[1]
 
-        calldata = univ2_router.swapExactTokensForTokens.encode_input(
-            amount_in, 0, path, multicall_swapper, 2 ** 256 - 1
-        )
+        # ?? seems like wrong amount_in:
+        #calldata = univ2_router.swapExactTokensForTokens.encode_input(
+        #    amount_in, 0, path, multicall_swapper, 2 ** 256 - 1
+        #)
+
+        # better:
+        calldata = univ2_router.swapExactTokensForTokens.encode_input(expected_out, 0, path, multicall_swapper.address, 2 ** 256 - 1)
+
         t = createTx(univ2_router, calldata)
         a = a + t[0]
         b = b + t[1]
 
-        expected_out = univ2_router.getAmountsOut(amount_in, path)[2]
+        if weth == token and wantIsWeth == True:
+            expected_out = univ2_router.getAmountsOut(expected_out, path)[1]
+        else:
+            expected_out = univ2_router.getAmountsOut(expected_out, path)[2]
 
     calldata = token_out.transfer.encode_input(receiver, expected_out)
     t = createTx(token_out, calldata)
@@ -109,7 +121,7 @@ def test_profitable_harvest_curve(
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     chain.sleep(1)
-    tx = strategy.harvest()
+    tx = strategy.harvest({"from": gov})
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault

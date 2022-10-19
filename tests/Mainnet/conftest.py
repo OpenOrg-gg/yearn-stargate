@@ -2,6 +2,83 @@ import pytest
 from brownie import config
 from brownie import Contract
 
+token_addresses = {
+    "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
+    "USDT": "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT
+    "WETH": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # WETH != 0x72E2F4830b9E45d52F80aC08CB2bEC0FeF72eD9c
+}
+
+token_id = {
+    "USDC": 0,  # USDC
+    "USDT": 1,  # USDT
+    "WETH": 2,  # WETH ! = 
+}
+
+token_prices = {
+    "WBTC": 35_000,
+    "WETH": 2_000,
+    "USDT": 1,
+    "USDC": 1,
+    "DAI": 1,
+}
+
+token_isWeth = {
+    "USDC": False,  # USDC
+    "USDT": False,  # USDT
+    "WETH": True,  # WETH 
+}
+
+whale_addresses = {
+    "USDC": "0x0a59649758aa4d66e25f08dd01271e891fe52199",
+    "USDT": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
+    "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
+}
+
+# TODO: uncomment those tokens you want to test as want
+@pytest.fixture(
+    params=[
+        "USDC",  # USDC
+        "USDT",  # USDT
+        "WETH",  # WETH
+    ],
+    scope="session",
+    autouse=True,
+)
+def token(request):
+    yield Contract(token_addresses[request.param])
+
+#Mainnet has STG rewards:
+@pytest.fixture
+def emissionTokenIsSTG():
+    yield True
+
+@pytest.fixture
+def token_lp(token, lp_staker):
+    yield Contract(lp_staker.poolInfo(token_id[token.symbol()])["lpToken"])
+
+@pytest.fixture
+def wantIsWeth(token):
+    yield token_isWeth[token.symbol()]
+
+@pytest.fixture
+def stargate_weth():
+    yield accounts.at("0x72E2F4830b9E45d52F80aC08CB2bEC0FeF72eD9c", force=True) 
+
+@pytest.fixture(scope="session", autouse=True)
+def token_whale(accounts, token):
+    yield accounts.at(whale_addresses[token.symbol()], force=True)
+
+@pytest.fixture(autouse=True)
+def amount(token, token_whale, user):
+    # this will get the number of tokens (around $1m worth of token)
+    amillion = round(100_000 / token_prices[token.symbol()])
+    amount = amillion * 10 ** token.decimals()
+    # # In order to get some funds for the token you are about to use,
+    # # it impersonate a whale address
+    if amount > token.balanceOf(token_whale):
+        amount = token.balanceOf(token_whale)
+    token.transfer(user, amount, {"from": token_whale})
+    yield amount
 
 @pytest.fixture
 def gov(accounts):
@@ -37,39 +114,15 @@ def strategist(accounts):
 def keeper(accounts):
     yield accounts[5]
 
-
-@pytest.fixture
-def token(usdc):
-    yield usdc
-
-
 @pytest.fixture
 def usdc():
     token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     yield Contract(token_address)
 
-
 @pytest.fixture
-def token2():
-    token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7"  # this should be the address of the ERC-20 used by the strategy/vault (USDT)
+def usdt():
+    token_address = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
     yield Contract(token_address)
-
-
-@pytest.fixture
-def token_whale(accounts):
-    yield accounts.at("0x7abe0ce388281d2acf297cb089caef3819b13448", force=True)
-
-
-@pytest.fixture
-def token2_whale(accounts):
-    yield accounts.at("0xd6216fc19db775df9774a6e33526131da7d19a2c", force=True)
-
-
-@pytest.fixture
-def token_lp():
-    address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"
-    yield Contract(address)
-
 
 @pytest.fixture
 def stg_token():
@@ -79,7 +132,8 @@ def stg_token():
 
 @pytest.fixture
 def stg_whale(accounts):
-    yield accounts.at("0x32e46cab87109ee6ede7d03d263c47be987238b9", force=True)
+    #yield accounts.at("0x32e46cab87109ee6ede7d03d263c47be987238b9", force=True)
+    yield accounts.at("0x28C6c06298d514Db089934071355E5743bf21d60", force=True)
 
 
 @pytest.fixture
@@ -110,9 +164,8 @@ def ymechs_safe():
 
 
 @pytest.fixture
-def stargate_token_pool():
-    address = "0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56"  # for USDC
-    yield Contract(address)
+def stargate_token_pool(token_lp):
+    yield token_lp
 
 
 @pytest.fixture(scope="module")
@@ -128,8 +181,8 @@ def multicall_swapper(interface):
 
 
 @pytest.fixture(scope="session")
-def liquidity_pool_id_in_lp_staking():
-    yield 0
+def liquidity_pool_id_in_lp_staking(token):
+    yield token_id[token.symbol()]
 
 
 @pytest.fixture
@@ -140,16 +193,6 @@ def SGT_whale(accounts):
 @pytest.fixture
 def token_LP_whale(accounts):
     yield accounts.at("0xf8fd11594574f6aeb3193e779b7b1cf5ef6432f4", force=True)
-
-
-@pytest.fixture
-def amount(accounts, token, user):
-    amount = 100_000 * 10 ** token.decimals()
-    # In order to get some funds for the token you are about to use,
-    # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x7abe0ce388281d2acf297cb089caef3819b13448", force=True)
-    token.transfer(user, amount, {"from": reserve})
-    yield amount
 
 
 @pytest.fixture
@@ -182,35 +225,18 @@ def price_feed():
 
 
 @pytest.fixture
-def weth_amout(user, weth):
-    weth_amout = 10 ** weth.decimals()
-    user.transfer(weth, weth_amout)
-    yield weth_amout
-
-
-@pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
-    vault.initialize(token, gov, rewards, "", "", guardian, management)
+    vault.initialize(token, gov, rewards, "", "", guardian, management, {"from": gov})
     vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
-
-
-@pytest.fixture
-def vault2(pm, gov, rewards, guardian, management, token2):
-    Vault = pm(config["dependencies"][0]).Vault
-    vault = guardian.deploy(Vault)
-    vault.initialize(token2, gov, rewards, "", "", guardian, management)
-    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
-    vault.setManagement(management, {"from": gov})
-    yield vault
-
 
 @pytest.fixture
 def strategy(
     strategist,
+    token,
     keeper,
     vault,
     Strategy,
@@ -219,16 +245,20 @@ def strategy(
     liquidity_pool_id_in_lp_staking,
     weth,
     trade_factory,
-    price_feed,
+    #price_feed,
     ymechs_safe,
+    wantIsWeth,
+    emissionTokenIsSTG,
 ):
     strategy = strategist.deploy(
         Strategy,
         vault,
         lp_staker,
         liquidity_pool_id_in_lp_staking,
-        price_feed,
-        "StrategyStargateUSDC",
+        wantIsWeth,
+        emissionTokenIsSTG,
+        #price_feed,
+        f"StrategyStargate{token.symbol()}",
     )
     strategy.setKeeper(keeper, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
