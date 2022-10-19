@@ -14,7 +14,6 @@ import "../interfaces/ISGETH.sol";
 import "../interfaces/Stargate/IStargateRouter.sol";
 import "../interfaces/Stargate/IPool.sol";
 import "../interfaces/Stargate/ILPStaking.sol";
-//import "../interfaces/Chainlink/IPriceFeed.sol";
 import "./ySwaps/ITradeFactory.sol";
 
 interface IBaseFee {
@@ -43,7 +42,6 @@ contract Strategy is BaseStrategy {
     string internal strategyName;
     bool public wantIsWETH;
     bool public emissionTokenIsSTG;
-    //IPriceFeed internal priceFeed;
 
     uint256 public creditThreshold; // amount of credit in underlying tokens that will automatically trigger a harvest
     bool internal forceHarvestTriggerOnce; // only set this to true when we want to trigger our keepers to harvest for us
@@ -54,7 +52,6 @@ contract Strategy is BaseStrategy {
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
         bool _emissionTokenIsSTG,
-        //address _priceFeed,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
         _initializeThis(
@@ -62,7 +59,6 @@ contract Strategy is BaseStrategy {
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
             _emissionTokenIsSTG,
-            //_priceFeed,
             _strategyName
         );
     }
@@ -76,7 +72,6 @@ contract Strategy is BaseStrategy {
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
         bool _emissionTokenIsSTG,
-        //address _priceFeed,
         string memory _strategyName
     ) public {
         // Make sure we only initialize one time
@@ -91,7 +86,6 @@ contract Strategy is BaseStrategy {
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
             _emissionTokenIsSTG,
-            //_priceFeed,
             _strategyName
         );
     }
@@ -101,7 +95,6 @@ contract Strategy is BaseStrategy {
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
         bool _emissionTokenIsSTG,
-        //address _priceFeed,
         string memory _strategyName
     ) internal {
         minReportDelay = 21 days; // time to trigger harvesting by keeper depending on gas base fee
@@ -116,19 +109,12 @@ contract Strategy is BaseStrategy {
             STG = IERC20(lpStaker.eToken());
         }
         
-
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
-
         lpToken = lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
-
         liquidityPool = IPool(address(lpToken));
         liquidityPoolID = liquidityPool.poolId();
         stargateRouter = IStargateRouter(liquidityPool.router());
-
         lpToken.safeApprove(address(lpStaker), max);
-
-        //priceFeed = IPriceFeed(_priceFeed);
-        //require(address(priceFeed) != address(0));
         strategyName = _strategyName;
         wantIsWETH = _wantIsWETH;
         if (wantIsWETH == false){
@@ -147,7 +133,6 @@ contract Strategy is BaseStrategy {
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
         bool _emissionTokenIsSTG,
-        //address _priceFeed,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
         require(isOriginal);
@@ -178,7 +163,6 @@ contract Strategy is BaseStrategy {
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
             _emissionTokenIsSTG,
-            //_priceFeed,
             _strategyName
         );
 
@@ -557,18 +541,6 @@ contract Strategy is BaseStrategy {
     function setCreditThreshold(uint256 _creditThreshold) external onlyVaultManagers
     {
         creditThreshold = _creditThreshold;
-    }
-
-    ///@notice Change the wantIsWETH boolean in case of a faulty declaration in the constructor.
-    function setWantIsWETH(bool _wantIsWETH) external onlyVaultManagers
-    {
-        wantIsWETH = _wantIsWETH;
-    }
-
-    ///@notice Change if the emission Token (eToken) in the lpStaker contract is reference as Stargate token (true) or as eToken (false) in case of a faulty declaration in the constructor.
-    function setEmissionTokenIsSTG(bool _emissionTokenIsSTG) external onlyVaultManagers
-    {
-        _emissionTokenIsSTG = _emissionTokenIsSTG;
     }
 
     ///@notice Change the contract to call to determine if basefee is acceptable for automated harvesting.
