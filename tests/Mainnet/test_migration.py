@@ -19,7 +19,8 @@ def test_migration(
     lp_staker,
     price_feed,
     liquidity_pool_id_in_lp_staking,
-    wantIsWeth
+    wantIsWeth,
+    emissionTokenIsSTG,
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -35,6 +36,7 @@ def test_migration(
         lp_staker,
         liquidity_pool_id_in_lp_staking,
         wantIsWeth,
+        emissionTokenIsSTG,
         #price_feed,
         "StrategyStargateUSDC",
     )

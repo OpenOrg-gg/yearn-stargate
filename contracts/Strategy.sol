@@ -42,6 +42,7 @@ contract Strategy is BaseStrategy {
 
     string internal strategyName;
     bool public wantIsWETH;
+    bool public emissionTokenIsSTG;
     //IPriceFeed internal priceFeed;
 
     uint256 public creditThreshold; // amount of credit in underlying tokens that will automatically trigger a harvest
@@ -52,6 +53,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
+        bool _emissionTokenIsSTG,
         //address _priceFeed,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
@@ -59,6 +61,7 @@ contract Strategy is BaseStrategy {
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
+            _emissionTokenIsSTG,
             //_priceFeed,
             _strategyName
         );
@@ -72,6 +75,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
+        bool _emissionTokenIsSTG,
         //address _priceFeed,
         string memory _strategyName
     ) public {
@@ -86,6 +90,7 @@ contract Strategy is BaseStrategy {
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
+            _emissionTokenIsSTG,
             //_priceFeed,
             _strategyName
         );
@@ -95,16 +100,23 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
+        bool _emissionTokenIsSTG,
         //address _priceFeed,
         string memory _strategyName
     ) internal {
-        // You can set these parameters on deployment to whatever you want
-        maxReportDelay = 100 days; // 100 days in seconds
-        minReportDelay = 30 days; // 30 days in seconds
-        creditThreshold = 1e6 * 1e18; ///Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
-
+        minReportDelay = 21 days; // time to trigger harvesting by keeper depending on gas base fee
+        maxReportDelay = 100 days; // time to trigger haresting by keeper no matter what
+        creditThreshold = 1e6 * 1e18; //Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
         lpStaker = ILPStaking(_lpStaker);
-        STG = IERC20(lpStaker.stargate());
+        
+        emissionTokenIsSTG = _emissionTokenIsSTG;
+        if (emissionTokenIsSTG == true){
+            STG = IERC20(lpStaker.stargate());
+        } else {
+            STG = IERC20(lpStaker.eToken());
+        }
+        
+
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
 
         lpToken = lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
@@ -134,6 +146,7 @@ contract Strategy is BaseStrategy {
         address _lpStaker,
         uint16 _liquidityPoolIDInLPStaking,
         bool _wantIsWETH,
+        bool _emissionTokenIsSTG,
         //address _priceFeed,
         string memory _strategyName
     ) external returns (address payable newStrategy) {
@@ -164,6 +177,7 @@ contract Strategy is BaseStrategy {
             _lpStaker,
             _liquidityPoolIDInLPStaking,
             _wantIsWETH,
+            _emissionTokenIsSTG,
             //_priceFeed,
             _strategyName
         );
@@ -180,8 +194,11 @@ contract Strategy is BaseStrategy {
     }
 
     function pendingSTGRewards() public view returns (uint256) {
-        return
-            lpStaker.pendingStargate(liquidityPoolIDInLPStaking, address(this));
+        if (emissionTokenIsSTG == true){
+            return lpStaker.pendingStargate(liquidityPoolIDInLPStaking, address(this));
+        } else {
+            return lpStaker.pendingEmissionToken(liquidityPoolIDInLPStaking, address(this));
+        }
     }
 
     function prepareReturn(uint256 _debtOutstanding)
@@ -406,15 +423,18 @@ contract Strategy is BaseStrategy {
     }
 
     // conversion function needs to be payable to send ETH and thus needs to be public
-    function _convertWETHtoSGETH(uint256 _amount) public payable {
-            IWETH(address(want)).withdraw(_amount);
-            address SGETH = IERC20Metadata(address(lpToken)).token();
-            ISGETH(SGETH).deposit{value: _amount}();
-            _checkAllowance(address(stargateRouter), SGETH, _amount);
+    function _convertWETHtoSGETH(uint256 _amount) internal {
+        IWETH(address(want)).withdraw(_amount);
+        address SGETH = IERC20Metadata(address(lpToken)).token();
+        ISGETH(SGETH).deposit{value: _amount}();
+        _checkAllowance(address(stargateRouter), SGETH, _amount);
     }
 
-    function _wrapETHtoWETH() public payable {
-        IWETH(address(want)).deposit{value: address(this).balance}();
+    function _wrapETHtoWETH() internal {
+        uint256 balanceOfETH = address(this).balance;
+        if (balanceOfETH > 0){
+            IWETH(address(want)).deposit{value: balanceOfETH}();
+        }
     }
 
     function withdrawFromLP(uint256 lpAmount) external onlyVaultManagers {
@@ -435,7 +455,6 @@ contract Strategy is BaseStrategy {
         if (wantIsWETH == true){ // We have now all ETH! --> Wrap to WETH:
             _wrapETHtoWETH();
         }
-
     }
 
     function _stakeLP(uint256 _amountToStake) internal {
@@ -459,6 +478,19 @@ contract Strategy is BaseStrategy {
 
     function emergencyUnstakedLP() public onlyAuthorized {
         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+    }
+
+    //emergency transfering sends wand balance plus amount to governance
+    function emergencyTransfer(uint256 _wantAmount, uint256 _STGAmount) external onlyGovernance {
+        if (wantIsWETH == true){
+            _wrapETHtoWETH();
+        }
+        if (_wantAmount > 0){
+            want.safeTransfer(vault.governance(), _wantAmount);
+        }
+        if (_STGAmount > 0){
+            STG.safeTransfer(vault.governance(), _STGAmount);
+        }
     }
 
     function balanceOfWant() public view returns (uint256) {
@@ -533,8 +565,14 @@ contract Strategy is BaseStrategy {
         wantIsWETH = _wantIsWETH;
     }
 
+    ///@notice Change if the emission Token (eToken) in the lpStaker contract is reference as Stargate token (true) or as eToken (false) in case of a faulty declaration in the constructor.
+    function setEmissionTokenIsSTG(bool _emissionTokenIsSTG) external onlyVaultManagers
+    {
+        _emissionTokenIsSTG = _emissionTokenIsSTG;
+    }
+
     ///@notice Change the contract to call to determine if basefee is acceptable for automated harvesting.
-    function setBaseFee(address _baseFeeOracle) external onlyVaultManagers
+    function setBaseFeeOracle(address _baseFeeOracle) external onlyVaultManagers
     {
         baseFeeOracle = _baseFeeOracle;
     }

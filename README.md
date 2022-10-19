@@ -1,8 +1,22 @@
-# Yearn Strategy Brownie Mix - Stargate
+# Stargate - Yearn Strategy
 
 Due Dilligence: https://hackmd.io/@-c0MLh5CTZOQ3HyKamAsvQ/SkFqB2OG5
 
 This strategy deposits `want` into Stargate LP tokens, farms them, sells STG for want.
+Update: This strategy also works on Optimism and allows to sell the OP rewards. 
+
+## Optimism Tests:
+After installing the prerequisites (below), run the following:
+```
+brownie test tests/Optimism/ -v --network optimism-main-fork --interactive
+```
+
+## Optimism Setup (prerequisite of Optimism Tests)
+```
+brownie networks add Optimism optimism-main chainid=10 explorer=https://api-optimistic.etherscan.io/api host=https://optimism-mainnet.infura.io/v3/$WEB3_INFURA_PROJECT_ID multicall2=0x5BA1e12693Dc8F9c48aAD8770482f4739bEeD696
+brownie networks add optimism-main-fork host=http://127.0.0.1 timeout=120 accounts=10 evm_version=istanbul fork=optimism-main gas_limit=12000000 mnemonic=brownie port=8545
+(brownie networks modify optimism-main-fork host=http://127.0.0.1 timeout=120 accounts=10 evm_version=istanbul fork=optimism-main gas_limit=12000000 mnemonic=brownie port=8545)
+```
 
 ## What you'll find here
 
