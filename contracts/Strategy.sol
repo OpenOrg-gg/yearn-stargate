@@ -359,19 +359,6 @@ contract Strategy is BaseStrategy {
         return false;
     }
 
-    // Override this to add all tokens/tokenized positions this contract manages
-    // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
-    // NOTE: Do *not* include `want`, already included in `sweep` below
-    //
-    // Example:
-    //
-    //    function protectedTokens() internal override view returns (address[] memory) {
-    //      address[] memory protected = new address[](3);
-    //      protected[0] = tokenA;
-    //      protected[1] = tokenB;
-    //      protected[2] = tokenC;
-    //      return protected;
-    //    }
     function protectedTokens()
         internal
         view
@@ -462,19 +449,6 @@ contract Strategy is BaseStrategy {
 
     function emergencyUnstakedLP() public onlyAuthorized {
         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
-    }
-
-    //emergency transfering sends wand balance plus amount to governance
-    function emergencyTransfer(uint256 _wantAmount, uint256 _STGAmount) external onlyGovernance {
-        if (wantIsWETH == true){
-            _wrapETHtoWETH();
-        }
-        if (_wantAmount > 0){
-            want.safeTransfer(vault.governance(), _wantAmount);
-        }
-        if (_STGAmount > 0){
-            STG.safeTransfer(vault.governance(), _STGAmount);
-        }
     }
 
     function balanceOfWant() public view returns (uint256) {
