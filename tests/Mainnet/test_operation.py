@@ -156,7 +156,7 @@ def test_limited_delta_credit_no_loss(
 
     liquidityPool = Contract(strategy.liquidityPool())
     router = Contract(liquidityPool.router())
-    router.instantRedeemLocal(liquidityPool.poolId(), liquidityPool.deltaCredit(), token_LP_whale, {"from":token_LP_whale})
+    router.instantRedeemLocal(liquidityPool.poolId(), liquidityPool.deltaCredit(), strategist, {"from":token_LP_whale})
 
     assert liquidityPool.deltaCredit() < amount
     vault.updateStrategyDebtRatio(strategy.address, 0, {"from": gov})

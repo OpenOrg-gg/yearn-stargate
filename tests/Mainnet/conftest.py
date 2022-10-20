@@ -34,6 +34,12 @@ whale_addresses = {
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
 }
 
+# whale_lp_addresses = {
+#     "USDC": "0x91a88dd9c43e1e6d580abe4c54f1b6b53900a644",
+#     "USDT": "0xb0d502e938ed5f4df2e681fe6e419ff29631d62b",
+#     "WETH": "0xb0d502e938ed5f4df2e681fe6e419ff29631d62b",
+# }
+
 # TODO: uncomment those tokens you want to test as want
 @pytest.fixture(
     params=[
@@ -192,7 +198,7 @@ def SGT_whale(accounts):
 
 @pytest.fixture
 def token_LP_whale(accounts):
-    yield accounts.at("0x91a88dd9c43e1e6d580abe4c54f1b6b53900a644", force=True)
+    yield accounts.at("0xb0d502e938ed5f4df2e681fe6e419ff29631d62b", force=True)
 
 
 @pytest.fixture
