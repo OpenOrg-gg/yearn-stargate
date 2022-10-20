@@ -11,7 +11,7 @@ token_addresses = {
 token_id = {
     "USDC": 0,  # USDC
     "USDT": 1,  # USDT
-    "WETH": 2,  # WETH ! = 
+    "WETH": 2,  # WETH ! =
 }
 
 token_prices = {
@@ -25,7 +25,7 @@ token_prices = {
 token_isWeth = {
     "USDC": False,  # USDC
     "USDT": False,  # USDT
-    "WETH": True,  # WETH 
+    "WETH": True,  # WETH
 }
 
 whale_addresses = {
@@ -33,6 +33,12 @@ whale_addresses = {
     "USDT": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
 }
+
+# whale_lp_addresses = {
+#     "USDC": "0x91a88dd9c43e1e6d580abe4c54f1b6b53900a644",
+#     "USDT": "0xb0d502e938ed5f4df2e681fe6e419ff29631d62b",
+#     "WETH": "0xb0d502e938ed5f4df2e681fe6e419ff29631d62b",
+# }
 
 # TODO: uncomment those tokens you want to test as want
 @pytest.fixture(
@@ -62,7 +68,7 @@ def wantIsWeth(token):
 
 @pytest.fixture
 def stargate_weth():
-    yield accounts.at("0x72E2F4830b9E45d52F80aC08CB2bEC0FeF72eD9c", force=True) 
+    yield accounts.at("0x72E2F4830b9E45d52F80aC08CB2bEC0FeF72eD9c", force=True)
 
 @pytest.fixture(scope="session", autouse=True)
 def token_whale(accounts, token):
@@ -192,7 +198,7 @@ def SGT_whale(accounts):
 
 @pytest.fixture
 def token_LP_whale(accounts):
-    yield accounts.at("0xf8fd11594574f6aeb3193e779b7b1cf5ef6432f4", force=True)
+    yield accounts.at("0xb0d502e938ed5f4df2e681fe6e419ff29631d62b", force=True)
 
 
 @pytest.fixture
