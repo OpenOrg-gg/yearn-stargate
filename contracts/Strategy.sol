@@ -28,7 +28,7 @@ contract Strategy is BaseStrategy {
 
     address public tradeFactory;
 
-    address public baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F;
+    address public baseFeeOracle;
 
     uint256 public liquidityPoolID;
     uint256 public liquidityPoolIDInLPStaking; // Each pool has a main Pool ID and then a separate Pool ID that refers to the pool in the LPStaking contract.
@@ -100,15 +100,17 @@ contract Strategy is BaseStrategy {
         minReportDelay = 21 days; // time to trigger harvesting by keeper depending on gas base fee
         maxReportDelay = 100 days; // time to trigger haresting by keeper no matter what
         creditThreshold = 1e6 * 1e18; //Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
+        healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
+        baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F
         lpStaker = ILPStaking(_lpStaker);
-        
+
         emissionTokenIsSTG = _emissionTokenIsSTG;
         if (emissionTokenIsSTG == true){
             reward = IERC20(lpStaker.stargate());
         } else {
             reward = IERC20(lpStaker.eToken());
         }
-        
+
         liquidityPoolIDInLPStaking = _liquidityPoolIDInLPStaking;
         lpToken = lpStaker.poolInfo(_liquidityPoolIDInLPStaking).lpToken;
         liquidityPool = IPool(address(lpToken));
@@ -195,16 +197,18 @@ contract Strategy is BaseStrategy {
         )
     {
         _claimRewards();
-        
+
         //grab the estimate total debt from the vault
         uint256 _vaultDebt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
+
         _profit = _totalAssets > _vaultDebt ? _totalAssets.sub(_vaultDebt) : 0;
 
         //free up _debtOutstanding + our profit, and make any necessary adjustments to the accounting.
         uint256 _amountFreed;
         uint256 _toLiquidate = _debtOutstanding.add(_profit);
         uint256 _wantBalance = balanceOfWant();
+
         if (_toLiquidate > _wantBalance) {
             (_amountFreed, _loss) = withdrawSome(
                 _toLiquidate.sub(_wantBalance)
@@ -213,6 +217,7 @@ contract Strategy is BaseStrategy {
         } else {
             _amountFreed = balanceOfWant();
         }
+
         _debtPayment = Math.min(_debtOutstanding, _amountFreed);
         _loss = _loss.add(
             _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
@@ -225,7 +230,6 @@ contract Strategy is BaseStrategy {
             _profit = _profit.sub(_loss);
             _loss = 0;
         }
-
         // we're done harvesting, so reset our trigger if we used it
         forceHarvestTriggerOnce = false;
     }
@@ -250,34 +254,25 @@ contract Strategy is BaseStrategy {
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
         uint256 _preWithdrawWant = balanceOfWant();
-        if (_amountNeeded > 0 && balanceOfStakedLPToken() > 0) {
-            _unstakeLP(balanceOfStakedLPToken());
+        if (_amountNeeded > 0) {
             uint256 unstakedBalance = balanceOfUnstakedLPToken();
+            uint256 lpAmountNeeded = _ldToLp(_amountNeeded);
+            if(unstakedBalance < lpAmountNeeded && balanceOfStakedLPToken() > 0) {
+                _unstakeLP(lpAmountNeeded.sub(unstakedBalance));
+                unstakedBalance = balanceOfUnstakedLPToken();
+            }
             if (unstakedBalance > 0) {
                 //withdraw from pool
-                _withdrawFromLP(unstakedBalance);
-            }
-
-            //check current want balance
-            uint256 _postWithdrawWant = balanceOfWant();
-
-            uint256 _unstakedWant = _postWithdrawWant.sub(_preWithdrawWant);
-            //redeposit to pool
-            if (_unstakedWant > _amountNeeded) {
-                _addToLP(_unstakedWant.sub(_amountNeeded));
-
-                unstakedBalance = balanceOfUnstakedLPToken();
-                if (unstakedBalance > 0) {
-                    //redeposit to farm
-                    _stakeLP(unstakedBalance);
-                }
+                _withdrawFromLP(lpAmountNeeded);
             }
         }
 
         uint256 _liquidAssets = balanceOfWant().sub(_preWithdrawWant);
         if (_amountNeeded > _liquidAssets) {
             _liquidatedAmount = _liquidAssets;
-            _loss = _amountNeeded.sub(_liquidAssets);
+            uint256 balanceOfLPTokens = _lpToLd(balanceOfAllLPToken());
+            uint256 _potentialLoss = _amountNeeded.sub(_liquidAssets);
+            _loss = _potentialLoss > balanceOfLPTokens ? _potentialLoss.sub(balanceOfLPTokens):0;
         } else {
             _liquidatedAmount = _amountNeeded;
         }
@@ -375,6 +370,15 @@ contract Strategy is BaseStrategy {
     {}
 
     // --------- UTILITY & HELPER FUNCTIONS ------------
+    function _lpToLd(uint _amountLP) internal returns (uint) {
+        return liquidityPool.amountLPtoLD(_amountLP);
+    }
+
+    function _ldToLp(uint _amountLD) internal returns (uint) {
+        require(liquidityPool.totalLiquidity() > 0);//dev: "Stargate: cant convert SDtoLP when totalLiq == 0";
+        uint256 _amountSD = _amountLD.div(liquidityPool.convertRate());
+        return _amountSD.mul(liquidityPool.totalSupply()).div(liquidityPool.totalLiquidity());
+    }
 
     function _addToLP(uint256 _amount) internal {
         // Nice! DRY principle
