@@ -101,7 +101,7 @@ contract Strategy is BaseStrategy {
         maxReportDelay = 100 days; // time to trigger haresting by keeper no matter what
         creditThreshold = 1e6 * 1e18; //Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
         healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
-        baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F
+        baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F;
         lpStaker = ILPStaking(_lpStaker);
 
         emissionTokenIsSTG = _emissionTokenIsSTG;

@@ -11,25 +11,32 @@ contract BaseFeeDummy {
 
     address public baseFeeOracle;
     address public governance;
+    bool public manualBaseFeeBool;
 
     constructor(address _governance) public {
+        manualBaseFeeBool = true;
         governance = _governance;
     }
 
     function isCurrentBaseFeeAcceptable() external view returns (bool) {
         if (baseFeeOracle == address(0)){
-            return true;
+            return manualBaseFeeBool;
         } else {
             return IBaseFee(baseFeeOracle).isCurrentBaseFeeAcceptable();          
         }
     }
 
-    function setBaseFeeOracle(address _newBaseFeeOracle) public {
+    function setManualBaseFeeBool(bool _manualBaseFeeBool) external {
+        require(msg.sender == governance, "!gov");
+        manualBaseFeeBool = _manualBaseFeeBool;
+    }
+
+    function setBaseFeeOracle(address _newBaseFeeOracle) external {
         require(msg.sender == governance, "!gov");
         baseFeeOracle = _newBaseFeeOracle;
     }
 
-    function setGovernance(address _newGovernance) public {
+    function setGovernance(address _newGovernance) external {
         require(msg.sender == governance, "!gov");
         governance = _newGovernance;
     }

@@ -104,6 +104,7 @@ def test_losses(
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
+    strategy.setDoHealthCheck(False, {"from": gov})
     # harvest
     chain.sleep(1)
     strategy.harvest({"from": gov})
@@ -140,6 +141,207 @@ def test_losses(
         == user_balance_before - amount
     )
 
+def test_equal_distribution_of_losses_2_percent_loss(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    lp_staker,
+    stargate_token_pool,
+    keeper,
+    gov,
+    amount2,
+    user2,
+    userBIG,
+    amountBIG
+):
+    strategy.setDoHealthCheck(False, {"from": gov})
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    user2_balance_before = token.balanceOf(user2)
+    token.approve(vault.address, amount, {"from": user})
+    token.approve(vault.address, amount2, {"from": user2})
+    token.approve(vault.address, amountBIG, {"from": userBIG})
+    vault.deposit(amount, {"from": user})
+    vault.deposit(amount2, {"from": user2})
+    vault.deposit(amountBIG, {"from": userBIG})
+    assert token.balanceOf(vault.address) == amount + amount2 + amountBIG
+    token.transfer(gov, token.balanceOf(user), {"from": user})
+    token.transfer(gov, token.balanceOf(user2), {"from": user2})
+    token.transfer(gov, token.balanceOf(userBIG), {"from": userBIG})
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount + amount2 + amountBIG
+
+    # tend()
+    tx = strategy.tend()
+    tx.wait(1)
+
+    # simulate getting rekt
+    strategy_account = accounts.at(strategy.address, force=True)
+
+    lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
+    #lose 30% of tokens
+    loss_percentage = 0.02
+    stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy)*loss_percentage, {"from": strategy_account},)
+
+    chain.sleep(1)
+    tx = strategy.harvest({"from": gov})
+
+    assert (pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX) == (amount+amount2+amountBIG)*loss_percentage)
+
+    # withdrawal
+    vault.withdraw({"from": user})
+    vault.withdraw({"from": userBIG})
+    vault.withdraw({"from": user2})
+    assert vault.totalAssets() == 0
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+
+
+def test_equal_distribution_of_losses_30_percent_loss(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    lp_staker,
+    stargate_token_pool,
+    keeper,
+    gov,
+    amount2,
+    user2,
+    userBIG,
+    amountBIG
+):
+    strategy.setDoHealthCheck(False, {"from": gov})
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    user2_balance_before = token.balanceOf(user2)
+    token.approve(vault.address, amount, {"from": user})
+    token.approve(vault.address, amount2, {"from": user2})
+    token.approve(vault.address, amountBIG, {"from": userBIG})
+    vault.deposit(amount, {"from": user})
+    vault.deposit(amount2, {"from": user2})
+    vault.deposit(amountBIG, {"from": userBIG})
+    assert token.balanceOf(vault.address) == amount + amount2 + amountBIG
+    token.transfer(gov, token.balanceOf(user), {"from": user})
+    token.transfer(gov, token.balanceOf(user2), {"from": user2})
+    token.transfer(gov, token.balanceOf(userBIG), {"from": userBIG})
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount + amount2 + amountBIG
+
+    # tend()
+    tx = strategy.tend()
+    tx.wait(1)
+
+    # simulate getting rekt
+    strategy_account = accounts.at(strategy.address, force=True)
+
+    lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
+    #lose 30% of tokens
+    loss_percentage = 0.3
+    stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy)*loss_percentage, {"from": strategy_account},)
+
+    chain.sleep(1)
+    tx = strategy.harvest({"from": gov})
+
+    assert (pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX) == (amount+amount2+amountBIG)*loss_percentage)
+
+    # withdrawal
+    vault.withdraw({"from": user})
+    vault.withdraw({"from": userBIG})
+    vault.withdraw({"from": user2})
+    assert vault.totalAssets() == 0
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+
+
+def test_equal_distribution_of_losses_100_percent_loss(
+    chain,
+    accounts,
+    token,
+    vault,
+    strategy,
+    user,
+    strategist,
+    amount,
+    RELATIVE_APPROX,
+    lp_staker,
+    stargate_token_pool,
+    keeper,
+    gov,
+    amount2,
+    user2,
+    userBIG,
+    amountBIG
+):
+    strategy.setDoHealthCheck(False, {"from": gov})
+    # Deposit to the vault
+    user_balance_before = token.balanceOf(user)
+    user2_balance_before = token.balanceOf(user2)
+    token.approve(vault.address, amount, {"from": user})
+    token.approve(vault.address, amount2, {"from": user2})
+    token.approve(vault.address, amountBIG, {"from": userBIG})
+    vault.deposit(amount, {"from": user})
+    vault.deposit(amount2, {"from": user2})
+    vault.deposit(amountBIG, {"from": userBIG})
+    assert token.balanceOf(vault.address) == amount + amount2 + amountBIG
+    token.transfer(gov, token.balanceOf(user), {"from": user})
+    token.transfer(gov, token.balanceOf(user2), {"from": user2})
+    token.transfer(gov, token.balanceOf(userBIG), {"from": userBIG})
+
+    # harvest
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount + amount2 + amountBIG
+
+    # tend()
+    tx = strategy.tend()
+    tx.wait(1)
+
+    # simulate getting rekt
+    strategy_account = accounts.at(strategy.address, force=True)
+
+    lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
+    #lose 30% of tokens
+    loss_percentage = 1
+    stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy)*loss_percentage, {"from": strategy_account},)
+
+    chain.sleep(1)
+    tx = strategy.harvest({"from": gov})
+
+    assert (pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX) == (amount+amount2+amountBIG)*loss_percentage)
+
+    # withdrawal
+    vault.withdraw({"from": user})
+    vault.withdraw({"from": userBIG})
+    vault.withdraw({"from": user2})
+    assert vault.totalAssets() == 0
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+
+
 def test_limited_delta_credit_no_loss(
     chain, accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, gov, token_LP_whale,
 ):
@@ -148,6 +350,7 @@ def test_limited_delta_credit_no_loss(
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
+    strategy.setDoHealthCheck(False, {"from": gov})
 
     # harvest
     chain.sleep(1)
