@@ -272,6 +272,7 @@ def strategy(
         f"StrategyStargate{token.symbol()}",
     )
     strategy.setKeeper(keeper, {"from": gov})
+    strategy.setDoHealthCheck(False, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     strategy.setTradeFactory(trade_factory.address, {"from": gov})
     baseFeeDummy = BaseFeeDummy.deploy(oChad, {"from": strategist})

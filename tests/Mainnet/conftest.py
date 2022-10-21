@@ -1,6 +1,6 @@
 import pytest
 from brownie import config
-from brownie import Contract
+from brownie import Contract, ZERO_ADDRESS
 
 token_addresses = {
     "USDC": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
@@ -86,6 +86,30 @@ def amount(token, token_whale, user):
     token.transfer(user, amount, {"from": token_whale})
     yield amount
 
+@pytest.fixture(autouse=True)
+def amount2(token, token_whale, user2):
+    # this will get the number of tokens (around $1m worth of token)
+    amillion = round(100_000 / token_prices[token.symbol()])
+    amount = amillion * 10 ** token.decimals()
+    # # In order to get some funds for the token you are about to use,
+    # # it impersonate a whale address
+    if amount > token.balanceOf(token_whale):
+        amount = token.balanceOf(token_whale)
+    token.transfer(user2, amount, {"from": token_whale})
+    yield amount
+
+@pytest.fixture(autouse=True)
+def amountBIG(token, token_whale, userBIG):
+    # this will get the number of tokens (around $1m worth of token)
+    amillion = round(1_000_000 / token_prices[token.symbol()])
+    amount = amillion * 10 ** token.decimals()
+    # # In order to get some funds for the token you are about to use,
+    # # it impersonate a whale address
+    if amount > token.balanceOf(token_whale):
+        amount = token.balanceOf(token_whale)
+    token.transfer(userBIG, amount, {"from": token_whale})
+    yield amount
+
 @pytest.fixture
 def gov(accounts):
     yield accounts.at("0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52", force=True)
@@ -95,6 +119,13 @@ def gov(accounts):
 def user(accounts):
     yield accounts[0]
 
+@pytest.fixture
+def user2(accounts):
+    yield accounts[6]
+
+@pytest.fixture
+def userBIG(accounts):
+    yield accounts[7]
 
 @pytest.fixture
 def rewards(accounts):
@@ -267,6 +298,8 @@ def strategy(
         f"StrategyStargate{token.symbol()}",
     )
     strategy.setKeeper(keeper, {"from": gov})
+    strategy.setDoHealthCheck(False, {"from": gov})
+    strategy.setHealthCheck(ZERO_ADDRESS, {"from": gov})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     trade_factory.grantRole(
         trade_factory.STRATEGY(),
