@@ -99,7 +99,7 @@ contract Strategy is BaseStrategy {
     ) internal {
         minReportDelay = 21 days; // time to trigger harvesting by keeper depending on gas base fee
         maxReportDelay = 100 days; // time to trigger haresting by keeper no matter what
-        creditThreshold = 1e6 * 1e18; //Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
+        creditThreshold = 1e6 * (uint(10)**(IERC20Metadata(address(want)).decimals())); //Credit threshold is in want token, and will trigger a harvest if strategy credit is above this amount.
         healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
         baseFeeOracle = 0xb5e1CAcB567d98faaDB60a1fD4820720141f064F;
         lpStaker = ILPStaking(_lpStaker);
@@ -286,13 +286,12 @@ contract Strategy is BaseStrategy {
         uint256 _liquidAssets = balanceOfWant();
 
         if (_liquidAssets < _amountNeeded) {
-            withdrawSome(_amountNeeded.sub(_liquidAssets));
+            (_liquidatedAmount, _loss) = withdrawSome(_amountNeeded.sub(_liquidAssets));
             _liquidAssets = balanceOfWant();
-            _loss = _amountNeeded.sub(_liquidAssets);
         }
 
         _liquidatedAmount = Math.min(_amountNeeded, _liquidAssets);
-        require(_amountNeeded == _liquidatedAmount.add(_loss), "!check");
+        require(_amountNeeded >= _liquidatedAmount.add(_loss), "!check");
     }
 
     function liquidateAllPositions() internal override returns (uint256) {

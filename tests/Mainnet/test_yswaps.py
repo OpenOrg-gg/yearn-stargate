@@ -114,6 +114,8 @@ def test_profitable_harvest_curve(
     )
     print(token_out.balanceOf(strategy))
 
+    chain.sleep(60)
+    chain.mine(1)
     tx = strategy.harvest({"from": strategist})
     print(tx.events)
     assert tx.events["Harvested"]["profit"] > 0
