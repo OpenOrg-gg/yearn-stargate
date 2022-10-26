@@ -20,6 +20,8 @@ def test_vault_shutdown_can_withdraw(
             {"from": user},
         )
 
+    chain.mine(1)
+    chain.sleep(60)
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": gov})
     chain.sleep(3600 * 7)
@@ -43,6 +45,8 @@ def test_basic_shutdown(
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
+    chain.mine(1)
+    chain.sleep(60)
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": gov})
     chain.mine(100)
@@ -59,7 +63,8 @@ def test_basic_shutdown(
 
     ## Set emergency
     strategy.setEmergencyExit({"from": strategist})
-
+    chain.mine(1)
+    chain.sleep(60)
     strategy.harvest({"from": gov})  ## Remove funds from strategy
 
     assert token.balanceOf(strategy) == 0

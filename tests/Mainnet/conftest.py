@@ -34,6 +34,13 @@ whale_addresses = {
     "WETH": "0x2f0b23f53734252bda2277357e97e1517d6b042a",
 }
 
+@pytest.fixture(autouse=True)
+def isolation(fn_isolation):
+    pass
+
+@pytest.fixture(scope="module", autouse=True)
+def shared_setup(module_isolation):
+    pass
 # whale_lp_addresses = {
 #     "USDC": "0x91a88dd9c43e1e6d580abe4c54f1b6b53900a644",
 #     "USDT": "0xb0d502e938ed5f4df2e681fe6e419ff29631d62b",
@@ -282,7 +289,6 @@ def strategy(
     liquidity_pool_id_in_lp_staking,
     weth,
     trade_factory,
-    #price_feed,
     ymechs_safe,
     wantIsWeth,
     emissionTokenIsSTG,
@@ -294,7 +300,6 @@ def strategy(
         liquidity_pool_id_in_lp_staking,
         wantIsWeth,
         emissionTokenIsSTG,
-        #price_feed,
         f"StrategyStargate{token.symbol()}",
     )
     strategy.setKeeper(keeper, {"from": gov})

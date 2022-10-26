@@ -188,24 +188,23 @@ def test_equal_distribution_of_losses_2_percent_loss(
     strategy_account = accounts.at(strategy.address, force=True)
 
     lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
-    #lose 30% of tokens
+    #lose 2% of tokens
     loss_percentage = 0.02
     stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy)*loss_percentage, {"from": strategy_account},)
 
     chain.sleep(1)
     tx = strategy.harvest({"from": gov})
-
     assert (pytest.approx(tx.events["StrategyReported"]["loss"], rel=RELATIVE_APPROX) == (amount+amount2+amountBIG)*loss_percentage)
 
     # withdrawal
     vault.withdraw({"from": user})
     vault.withdraw({"from": userBIG})
     vault.withdraw({"from": user2})
-    assert vault.totalAssets() == 0
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2)+(vault.balanceOf(user2)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG)+(vault.balanceOf(userBIG)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+
 
 
 def test_equal_distribution_of_losses_30_percent_loss(
@@ -268,11 +267,10 @@ def test_equal_distribution_of_losses_30_percent_loss(
     vault.withdraw({"from": user})
     vault.withdraw({"from": userBIG})
     vault.withdraw({"from": user2})
-    assert vault.totalAssets() == 0
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2)+(vault.balanceOf(user2)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG)+(vault.balanceOf(userBIG)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
 
 
 def test_equal_distribution_of_losses_100_percent_loss(
@@ -322,7 +320,7 @@ def test_equal_distribution_of_losses_100_percent_loss(
     strategy_account = accounts.at(strategy.address, force=True)
 
     lp_staker.emergencyWithdraw(strategy.liquidityPoolIDInLPStaking(), {"from": strategy_account})
-    #lose 30% of tokens
+    #lose 100% of tokens
     loss_percentage = 1
     stargate_token_pool.transfer(ZERO_ADDRESS, stargate_token_pool.balanceOf(strategy)*loss_percentage, {"from": strategy_account},)
 
@@ -335,11 +333,10 @@ def test_equal_distribution_of_losses_100_percent_loss(
     vault.withdraw({"from": user})
     vault.withdraw({"from": userBIG})
     vault.withdraw({"from": user2})
-    assert vault.totalAssets() == 0
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == token.balanceOf(user2))
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(user2), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
-    assert (pytest.approx(token.balanceOf(userBIG), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == token.balanceOf(user2))
+    assert (pytest.approx(token.balanceOf(user)+(vault.balanceOf(user)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(user2)+(vault.balanceOf(user2)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amount2 * (1-loss_percentage))
+    assert (pytest.approx(token.balanceOf(userBIG)+(vault.balanceOf(userBIG)*vault.pricePerShare()/(10**token.decimals())), rel=RELATIVE_APPROX) == amountBIG * (1-loss_percentage))
 
 
 def test_limited_delta_credit_no_loss(
