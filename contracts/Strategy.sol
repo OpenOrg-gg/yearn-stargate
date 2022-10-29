@@ -45,6 +45,7 @@ contract Strategy is BaseStrategy {
 
     uint256 public creditThreshold; // amount of credit in underlying tokens that will automatically trigger a harvest
     bool internal forceHarvestTriggerOnce; // only set this to true when we want to trigger our keepers to harvest for us
+    bool internal unstakeLPOnMigration; //if True it would unstake the LP on `prepareMigration`, if not it would skip this step
 
     constructor(
         address _vault,
@@ -122,6 +123,7 @@ contract Strategy is BaseStrategy {
         if (wantIsWETH == false){
             require(address(want) == liquidityPool.token());
         }
+        unstakeLPOnMigration = true;
     }
 
     event Cloned(address indexed clone);
@@ -306,7 +308,9 @@ contract Strategy is BaseStrategy {
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
     function prepareMigration(address _newStrategy) internal override {
-        _emergencyUnstakeLP();
+        if(unstakeLPOnMigration) {
+            _emergencyUnstakeLP();
+        }
         lpToken.safeTransfer(_newStrategy, balanceOfUnstakedLPToken());
     }
 
@@ -458,8 +462,8 @@ contract Strategy is BaseStrategy {
         lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
     }
 
-    function emergencyUnstakedLP() public onlyAuthorized {
-        lpStaker.emergencyWithdraw(liquidityPoolIDInLPStaking);
+    function emergencyUnstakeLP() public onlyAuthorized {
+        _emergencyUnstakeLP();
     }
 
     function balanceOfWant() public view returns (uint256) {
@@ -515,6 +519,11 @@ contract Strategy is BaseStrategy {
     // check if the current baseFee is below our external target
     function isBaseFeeAcceptable() internal view returns (bool) {
         return IBaseFee(baseFeeOracle).isCurrentBaseFeeAcceptable();
+    }
+
+    // This allows us to unstake or not before migration
+    function setUnstakeLPOnMigration(bool _unstakeLPOnMigration) external onlyVaultManagers {
+        unstakeLPOnMigration = _unstakeLPOnMigration;
     }
 
     // This allows us to manually harvest with our keeper as needed
