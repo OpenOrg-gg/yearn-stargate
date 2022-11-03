@@ -19,7 +19,9 @@ def test_migrate_stargate(chain,
     ymechs_safe,
     trade_factory,
     wantIsWeth,
-    emissionTokenIsSTG,):
+    emissionTokenIsSTG,
+    lp_staker,
+    strategist, Strategy):
     # Contracts
     sms = Contract("0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7")
     ychad = Contract("0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52")
@@ -28,18 +30,23 @@ def test_migrate_stargate(chain,
     old_stargate_usdt = Contract("0xeAD650E673F497CdBE365F7a855273BbB468e454")
     old_stargates = [old_stargate_usdc, old_stargate_usdt]
 
-    new_stargate_usdc = Contract("0x11E57D1520997c42C05bC35B8b083Be22Ab911c0")
-    new_stargate_usdt = Contract("0xF4A5dcBaFa166caC0A1c8d293f92128308831880")
-    new_stargate_usdc.setTradeFactory(trade_factory.address, {"from": safe})
-    new_stargate_usdt.setTradeFactory(trade_factory.address, {"from": safe})
-    new_stargates = [new_stargate_usdc, new_stargate_usdt]
-
     usdc_vault = Contract(old_stargate_usdc.vault())
     usdt_vault = Contract(old_stargate_usdt.vault())
+    safe = Contract(usdc_vault.governance())
+
+    new_stargate_usdc = strategist.deploy(Strategy, usdc_vault, lp_staker, 0, False, True, "StargateV2-USDC")
+    new_stargate_usdc.setRewards("0x93A62dA5a14C80f265DAbC077fCEE437B1a0Efde", {"from": strategist})
+    new_stargate_usdc.setStrategist(sms, {"from": strategist})
+    new_stargate_usdt = strategist.deploy(Strategy, usdt_vault, lp_staker, 1, False, True, "StargateV2-USDC")
+    new_stargate_usdt.setRewards("0x93A62dA5a14C80f265DAbC077fCEE437B1a0Efde", {"from": strategist})
+    new_stargate_usdt.setStrategist(sms, {"from": strategist})
+
+    #new_stargate_usdc = Contract("0x11E57D1520997c42C05bC35B8b083Be22Ab911c0")
+    #new_stargate_usdt = Contract("0xF4A5dcBaFa166caC0A1c8d293f92128308831880")
+    new_stargates = [new_stargate_usdc, new_stargate_usdt]
 
     usdc_assets_before = usdc_vault.strategies(old_stargate_usdc)['totalDebt']
     usdt_assets_before = usdt_vault.strategies(old_stargate_usdt)['totalDebt'] 
-    safe = Contract(usdc_vault.governance())
 
     stg = Contract("0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6")
     susdc = Contract("0xdf0770dF86a8034b3EFEf0A1Bb3c889B8332FF56")
@@ -83,14 +90,14 @@ def test_migrate_stargate(chain,
     curve_pool.exchange(0, 1, amount_in, 0, {"from": new_stargate_usdc})
     assert stg.balanceOf(new_stargate_usdc) == 0
 
-    #chain.sleep(60)
-    #new_stargate_usdc.harvest({"from": safe})
-    #new_stargate_usdt.harvest({"from": safe})
-    #assert new_stargate_usdc.estimatedTotalAssets() >= usdc_assets_before
-    #assert new_stargate_usdt.estimatedTotalAssets() >= usdt_assets_before 
+    chain.sleep(60)
+    new_stargate_usdc.harvest({"from": safe})
+    new_stargate_usdt.harvest({"from": safe})
+    assert new_stargate_usdc.estimatedTotalAssets() >= usdc_assets_before
+    assert new_stargate_usdt.estimatedTotalAssets() >= usdt_assets_before 
 
 
-    
+    """
     ######################## YSWAPS:
     for strategy in new_stargates:
         token_in = stg_token
@@ -168,9 +175,20 @@ def test_migrate_stargate(chain,
         tx = strategy.harvest({"from": safe})
         print(tx.events)
         assert tx.events["Harvested"]["profit"] > 0
+
+        before_pps = Contract(strategy.vault()).pricePerShare()
+        # Harvest 2: Realize profit
+        chain.sleep(1)
+        tx = strategy.harvest({"from": gov})
+        chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+        chain.mine(1)
+        profit = token.balanceOf(Contract(strategy.vault()))  # Profits go to vault
+
+        assert strategy.estimatedTotalAssets() + profit > amount
+        assert Contract(strategy.vault()).pricePerShare() > before_pps
         assert stg_token.balanceOf(strategy) < 1e18  # dust is OK
 
-    
+    """
 
 
 def createTx(to, data):

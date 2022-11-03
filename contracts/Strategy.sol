@@ -220,7 +220,19 @@ contract Strategy is BaseStrategy {
             _amountFreed = balanceOfWant();
         }
 
-        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+        uint256 _liquidWant = balanceOfWant();
+
+        // calculate final p&l and _debtPayment
+
+        // enough to pay profit (partial or full) only
+        if (_liquidWant <= _profit) {
+            _profit = _liquidWant;
+            _debtPayment = 0;
+        // enough to pay for all profit and _debtOutstanding (partial or full)
+        } else {
+            _debtPayment = Math.min(_liquidWant - _profit, _debtOutstanding);
+        }
+        
         _loss = _loss.add(
             _vaultDebt > _totalAssets ? _vaultDebt.sub(_totalAssets) : 0
         );
